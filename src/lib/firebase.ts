@@ -9,7 +9,8 @@ const USE_FIRESTORE = false; // Set to false since you're using Realtime Databas
 
 // Default configuration for testing/development - DO NOT use in production
 const defaultConfig = {
-  apiKey: "AIzaSyDDNx9_-YERLFY9doiM0lib39cYUxXirjQ",
+   // Replace the hardcoded API key with environment variable
+  apiKey: import.meta.env.VITE_GEMINI_API_KEY,
   authDomain: "parkinsons-mock-project.firebaseapp.com",
   projectId: "parkinsons-mock-project",
   storageBucket: "parkinsons-mock-project.appspot.com",
