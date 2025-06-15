@@ -7,7 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ModelType } from "@/utils/parkinsonPredictor";
+import { ModelType } from "@/types";
 
 interface ModelSelectorProps {
   selectedModel: ModelType | 'ensemble';

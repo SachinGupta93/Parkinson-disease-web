@@ -5,32 +5,30 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Slider } from "@/components/ui/slider";
-import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import EnhancedVoiceRecorder from "@/components/EnhancedVoiceRecorder";
-import { ParkinsonsFeatures, ModelType } from "@/utils/parkinsonPredictor";
+import { ParkinsonsFeatures, ModelType } from "@/types";
 import ModelSelector from "@/components/ModelSelector";
+import { apiService, ClinicalSymptoms, ClinicalAssessmentRequest } from "@/services/api";
 import {
   Mic,
-  ClipboardList,
   Settings,
-  LineChart,
   Activity,
-  Brain,
-  PencilRuler,
   AlertTriangle,
-  Calendar,
   Send,
   Volume2,
-  // Waveform,
   Radio,
   Gauge,
   Scale,
   ActivitySquare,
   FileText,
-  User
+  User,
+  Brain,
+  Stethoscope,
+  HelpCircle,
+  ChevronRight
 } from "lucide-react";
 import {
   Form,
@@ -43,13 +41,13 @@ import {
 import { Progress } from '@/components/ui/progress';
 
 interface SymptomFormData {
-  // Clinical symptoms
-  tremor: number;
-  rigidity: number;
-  bradykinesia: number;
-  posturalInstability: number;
-  voiceChanges: number;
-  handwriting: number;
+  // Clinical symptoms (boolean values)
+  tremor: boolean;
+  rigidity: boolean;
+  bradykinesia: boolean;
+  posturalInstability: boolean;
+  voiceChanges: boolean;
+  handwriting: boolean;
   age: number;
   
   // Voice features - optional for manual input
@@ -85,16 +83,19 @@ const SymptomChecker = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [advancedMode, setAdvancedMode] = useState(false);
   const [voiceFeatures, setVoiceFeatures] = useState<Partial<ParkinsonsFeatures> | null>(null);
+  const [hasVoiceData, setHasVoiceData] = useState(false);
   const [selectedModel, setSelectedModel] = useState<ModelType | 'ensemble'>('ensemble');
-    const form = useForm<SymptomFormData>({
+  const [activeTab, setActiveTab] = useState("symptoms");
+  
+  const form = useForm<SymptomFormData>({
     defaultValues: {
       // Clinical symptoms
-      tremor: 0,
-      rigidity: 0,
-      bradykinesia: 0,
-      posturalInstability: 0,
-      voiceChanges: 0,
-      handwriting: 0,
+      tremor: false,
+      rigidity: false,
+      bradykinesia: false,
+      posturalInstability: false,
+      voiceChanges: false,
+      handwriting: false,
       age: 50,
       
       // Voice features
@@ -126,81 +127,117 @@ const SymptomChecker = () => {
     }
   });
 
-  const { watch, setValue, formState: { errors } } = form;
+  const { watch, setValue, formState: { errors }, handleSubmit } = form;
   const watchedValues = watch();
-    const onSubmit = (data: SymptomFormData) => {
+  
+  const onSubmit = async (data: SymptomFormData) => {
     setIsSubmitting(true);
     console.log("Form submitted with data:", data);
     console.log("Voice features:", voiceFeatures);
     console.log("Selected model:", selectedModel);
     
     try {
-      // Filter out zero values from the voice parameters if they weren't actually set
-      const cleanedData = { ...data };
-      const voiceKeys = [
-        'mdvpFo', 'mdvpFhi', 'mdvpFlo', 'mdvpJitter', 'mdvpRAP',
-        'mdvpPPQ', 'jitterDDP', 'mdvpShimmer', 'shimmerAPQ3', 'shimmerAPQ5',
-        'shimmerDDA', 'nhr', 'hnr', 'rpde', 'dfa', 'spread1', 'spread2',
-        'd2', 'ppe'
-      ];
-      
-      let hasVoiceData = false;
-      voiceKeys.forEach(key => {
-        if (cleanedData[key as keyof SymptomFormData] !== 0) {
-          hasVoiceData = true;
-        }
-      });
-      
-      // If there's voice data from the recorder, prioritize it
-      const allFeatures = {
-        ...cleanedData,
-        ...(voiceFeatures || {})
+      // Prepare clinical symptoms data
+      const clinicalSymptoms: ClinicalSymptoms = {
+        tremor: data.tremor,
+        rigidity: data.rigidity,
+        bradykinesia: data.bradykinesia,
+        posturalInstability: data.posturalInstability,
+        voiceChanges: data.voiceChanges,
+        handwriting: data.handwriting,
+        age: data.age
       };
 
-        // Pass data to results page
+      // Prepare voice features if available
+      let voiceData = undefined;
+      if (voiceFeatures) {
+        voiceData = {
+          mdvpFo: voiceFeatures.mdvpFo || 0,
+          mdvpFhi: voiceFeatures.mdvpFhi || 0,
+          mdvpFlo: voiceFeatures.mdvpFlo || 0,
+          mdvpJitter: voiceFeatures.mdvpJitter || 0,
+          mdvpShimmer: voiceFeatures.mdvpShimmer || 0,
+          nhr: voiceFeatures.nhr || 0,
+          hnr: voiceFeatures.hnr || 0,
+          rpde: voiceFeatures.rpde || 0,
+          dfa: voiceFeatures.dfa || 0,
+          spread1: voiceFeatures.spread1 || 0,
+          spread2: voiceFeatures.spread2 || 0,
+          d2: voiceFeatures.d2 || 0,
+          ppe: voiceFeatures.ppe || 0
+        };
+      }
+
+      // Prepare assessment request
+      const assessmentRequest: ClinicalAssessmentRequest = {
+        clinical_symptoms: clinicalSymptoms,
+        voice_features: voiceData
+      };
+
+      console.log("Sending clinical assessment request:", assessmentRequest);
+
+      // Send assessment to backend
+      const assessmentResult = await apiService.assessClinicalSymptoms(assessmentRequest);
+      
+      console.log("Clinical assessment result:", assessmentResult);
+
+      // Navigate to results page with the new data structure
       navigate("/app/results", { 
         state: { 
-          formData: cleanedData, 
-          voiceFeatures: voiceFeatures || (hasVoiceData ? cleanedData : null),
+          clinicalAssessment: assessmentResult,
+          formData: data,
+          voiceFeatures: voiceFeatures,
           selectedModel: selectedModel,
-          hasVoiceData: hasVoiceData || voiceFeatures !== null
+          hasVoiceData: voiceFeatures !== null
         } 
       });
 
-      toast.success("Assessment data submitted successfully");
+      toast.success("Assessment completed successfully", {
+        description: `Risk score: ${typeof assessmentResult.risk_score === 'number' 
+          ? assessmentResult.risk_score.toFixed(1) 
+          : parseFloat(String(assessmentResult.risk_score)).toFixed(1)}%, Model: ${assessmentResult.model_used}`
+      });
+      
     } catch (error) {
-      console.error("Error submitting form:", error);
-      toast.error("Failed to submit assessment data");
+      console.error("Error submitting assessment:", error);
+      toast.error("Failed to complete assessment", {
+        description: "Please check your connection and try again."
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleSliderChange = (name: keyof SymptomFormData, value: number[]) => {
-    setValue(name, value[0]);
-  };
-
-  const getSliderDescription = (value: number) => {
-    if (value <= 1) return "None";
-    if (value <= 3) return "Mild";
-    if (value <= 6) return "Moderate";
-    return "Severe";
-  };
   const handleVoiceAnalyzed = (voiceData: any) => {
-    setVoiceFeatures(voiceData);
+    // Convert backend format to frontend format
+    const convertedVoiceFeatures = {
+      mdvpFo: voiceData.MDVP_Fo || 0,
+      mdvpFhi: voiceData.MDVP_Fhi || 0,
+      mdvpFlo: voiceData.MDVP_Flo || 0,
+      mdvpJitter: voiceData.MDVP_Jitter || 0,
+      mdvpShimmer: voiceData.MDVP_Shimmer || 0,
+      nhr: voiceData.NHR || 0,
+      hnr: voiceData.HNR || 0,
+      rpde: voiceData.RPDE || 0,
+      dfa: voiceData.DFA || 0,
+      spread1: voiceData.spread1 || 0,
+      spread2: voiceData.spread2 || 0,
+      d2: voiceData.D2 || 0,
+      ppe: voiceData.PPE || 0
+    };
     
-    // Also populate the corresponding form fields
-    if (voiceData) {
-      Object.keys(voiceData).forEach((key) => {
-        if (key in form.getValues()) {
-          setValue(key as keyof SymptomFormData, voiceData[key]);
-        }
-      });
-    }
+    console.log("Converting voice data:", voiceData, "to:", convertedVoiceFeatures);
+    setVoiceFeatures(convertedVoiceFeatures);
     
-    toast.success("Voice features extracted successfully", {
-      description: "Your voice data will be included in the assessment."
+    // Mark that voice has been analyzed
+    setHasVoiceData(true);
+    
+    toast.success("Voice analysis completed!", {
+      description: "Voice features will be combined with clinical symptoms for enhanced assessment."
     });
+    
+    // Move to the next tab after voice analysis
+    setActiveTab("symptoms");
   };
   
   const handleModelChange = (model: ModelType | 'ensemble') => {
@@ -214,571 +251,535 @@ const SymptomChecker = () => {
 
   // Calculate progress (number of filled required fields / total required fields)
   const requiredFields = [
-    watchedValues.age,
-    watchedValues.tremor,
-    watchedValues.rigidity,
-    watchedValues.bradykinesia,
-    watchedValues.posturalInstability,
-    watchedValues.voiceChanges,
-    watchedValues.handwriting,
+    watchedValues.age && watchedValues.age > 0,
+    typeof watchedValues.tremor === 'boolean',
+    typeof watchedValues.rigidity === 'boolean',
+    typeof watchedValues.bradykinesia === 'boolean',
+    typeof watchedValues.posturalInstability === 'boolean',
+    typeof watchedValues.voiceChanges === 'boolean',
+    typeof watchedValues.handwriting === 'boolean',
   ];
-  const progress = Math.round((requiredFields.filter(v => v && v !== 0).length / requiredFields.length) * 100);
+  const progress = Math.round((requiredFields.filter(Boolean).length / requiredFields.length) * 100);
+
+  // Symptom descriptions
+  const symptomDescriptions = {
+    tremor: "Involuntary shaking or trembling, especially at rest. Often starts in one hand or finger.",
+    rigidity: "Muscle stiffness that doesn't go away when you relax. May cause decreased range of motion.",
+    bradykinesia: "Slowness of movement or difficulty initiating movement. Tasks may take longer to complete.",
+    posturalInstability: "Problems with balance and coordination. May cause falls or difficulty walking.",
+    voiceChanges: "Changes in speech volume, clarity, or tone. Voice may become softer or more monotone.",
+    handwriting: "Changes in handwriting size or quality. Writing may become smaller (micrographia) or shaky."
+  };
 
   return (
-    <Form {...form}>
-      <div className="space-y-6 max-w-4xl mx-auto">
-        {/* Progress Bar */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-medium text-sm text-zinc-600 dark:text-zinc-300">Form Completion</span>
-            <span className="text-sm font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded-full">
-              {progress}%
-            </span>
-          </div>
-          <Progress 
-            value={progress}
-            className="h-2 bg-zinc-100 dark:bg-zinc-800 [&>div]:bg-gradient-to-r [&>div]:from-purple-600 [&>div]:to-teal-500 dark:[&>div]:from-purple-500 dark:[&>div]:to-teal-400"
-          />
+    <div className="container mx-auto py-8 px-4">
+      <div className="max-w-5xl mx-auto">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">
+            Parkinson's Symptom Assessment
+          </h1>
+          <p className="text-muted-foreground mt-2">
+            Complete this assessment to evaluate your Parkinson's disease risk factors
+          </p>
         </div>
 
-        {/* Personal Info Card */}
-        <Card className="border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-shadow duration-200">
-          <CardHeader className="flex flex-row items-center gap-2 pb-2">
-            <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/30">
-              <User size={20} className="text-purple-600 dark:text-purple-400" />
-            </div>
-            <CardTitle className="text-xl">Personal Information</CardTitle>
-            </CardHeader>
-            <CardContent>
-                  <FormField
-                    control={form.control}
-                    name="age"
-                    rules={{
-                      required: "Age is required",
-                      min: { value: 18, message: "Age must be 18 or older" },
-                      max: { value: 120, message: "Age must be realistic" }
-                    }}
-                    render={({ field }) => (
-                      <FormItem>
-                  <FormLabel className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300">
-                    <User size={16} className="text-purple-600 dark:text-purple-400" /> 
-                    Age
-                  </FormLabel>
-                        <FormControl>
-                          <Input 
-                            type="number" 
-                            min="18" 
-                            max="120"
-                            {...field}
-                      onChange={e => field.onChange(parseInt(e.target.value))}
-                      className="border-zinc-200 dark:border-zinc-800 focus:border-purple-500 dark:focus:border-purple-400"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-          </CardContent>
-        </Card>
-
-        {/* Clinical Symptoms Card */}
-        <Card className="border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-shadow duration-200">
-          <CardHeader className="flex flex-row items-center gap-2 pb-2">
-            <div className="p-2 rounded-lg bg-teal-100 dark:bg-teal-900/30">
-              <ActivitySquare size={20} className="text-teal-600 dark:text-teal-400" />
-            </div>
-            <CardTitle className="text-xl">Clinical Symptoms</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-                    {/* Tremor */}
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                <Label htmlFor="tremor" className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300">
-                  <Radio size={16} className="text-purple-600 dark:text-purple-400" /> 
-                  Tremor
-                        </Label>
-                <span className="text-sm font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded-full">
-                  {getSliderDescription(watchedValues.tremor)}
-                        </span>
-                      </div>
-                      <Slider
-                        id="tremor"
-                        min={0}
-                        max={10}
-                        step={1}
-                        value={[watchedValues.tremor]}
-                onValueChange={v => handleSliderChange('tremor', v)} 
-                className="[&_[role=slider]]:bg-purple-600 dark:[&_[role=slider]]:bg-purple-500"
-                        aria-label="Tremor severity"
-                      />
-                    </div>
-                    
-                    {/* Rigidity */}
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                <Label htmlFor="rigidity" className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300">
-                  <Scale size={16} className="text-teal-600 dark:text-teal-400" /> 
-                  Rigidity
-                </Label>
-                <span className="text-sm font-medium bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 px-2 py-0.5 rounded-full">
-                  {getSliderDescription(watchedValues.rigidity)}
-                        </span>
-                      </div>
-                      <Slider
-                        id="rigidity"
-                        min={0}
-                        max={10}
-                        step={1}
-                        value={[watchedValues.rigidity]}
-                onValueChange={v => handleSliderChange('rigidity', v)} 
-                className="[&_[role=slider]]:bg-teal-600 dark:[&_[role=slider]]:bg-teal-500"
-                        aria-label="Rigidity severity"
-                      />
-                    </div>
-                    
-            {/* Continue with other symptoms following the same pattern... */}
-                    {/* Bradykinesia */}
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                <Label htmlFor="bradykinesia" className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300">
-                  <Gauge size={16} className="text-purple-600 dark:text-purple-400" /> 
-                  Bradykinesia
-                </Label>
-                <span className="text-sm font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded-full">
-                  {getSliderDescription(watchedValues.bradykinesia)}
-                        </span>
-                      </div>
-                      <Slider
-                        id="bradykinesia"
-                        min={0}
-                        max={10}
-                        step={1}
-                        value={[watchedValues.bradykinesia]}
-                onValueChange={v => handleSliderChange('bradykinesia', v)} 
-                className="[&_[role=slider]]:bg-purple-600 dark:[&_[role=slider]]:bg-purple-500"
-                        aria-label="Bradykinesia severity"
-                      />
-                    </div>
-                    
-                    {/* Postural Instability */}
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                <Label htmlFor="posturalInstability" className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300">
-                  <Activity size={16} className="text-teal-600 dark:text-teal-400" /> 
-                  Balance Problems
-                </Label>
-                <span className="text-sm font-medium bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 px-2 py-0.5 rounded-full">
-                  {getSliderDescription(watchedValues.posturalInstability)}
-                        </span>
-                      </div>
-                      <Slider
-                        id="posturalInstability"
-                        min={0}
-                        max={10}
-                        step={1}
-                        value={[watchedValues.posturalInstability]}
-                onValueChange={v => handleSliderChange('posturalInstability', v)} 
-                className="[&_[role=slider]]:bg-teal-600 dark:[&_[role=slider]]:bg-teal-500"
-                        aria-label="Balance problems severity"
-                      />
-                    </div>
-                    
-                    {/* Voice Changes */}
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                <Label htmlFor="voiceChanges" className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300">
-                  <Volume2 size={16} className="text-purple-600 dark:text-purple-400" /> 
-                  Voice Changes
-                </Label>
-                <span className="text-sm font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded-full">
-                  {getSliderDescription(watchedValues.voiceChanges)}
-                        </span>
-                      </div>
-                      <Slider
-                        id="voiceChanges"
-                        min={0}
-                        max={10}
-                        step={1}
-                        value={[watchedValues.voiceChanges]}
-                onValueChange={v => handleSliderChange('voiceChanges', v)} 
-                className="[&_[role=slider]]:bg-purple-600 dark:[&_[role=slider]]:bg-purple-500"
-                        aria-label="Voice changes severity"
-                      />
-                    </div>
-                    
-                    {/* Handwriting */}
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                <Label htmlFor="handwriting" className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300">
-                  <FileText size={16} className="text-teal-600 dark:text-teal-400" /> 
-                  Handwriting Changes
-                </Label>
-                <span className="text-sm font-medium bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 px-2 py-0.5 rounded-full">
-                  {getSliderDescription(watchedValues.handwriting)}
-                        </span>
-                      </div>
-                      <Slider
-                        id="handwriting"
-                        min={0}
-                        max={10}
-                        step={1}
-                        value={[watchedValues.handwriting]}
-                onValueChange={v => handleSliderChange('handwriting', v)} 
-                className="[&_[role=slider]]:bg-teal-600 dark:[&_[role=slider]]:bg-teal-500"
-                        aria-label="Handwriting changes severity"
-                        />
-                      </div>
-            </CardContent>
-        </Card>
-
-        <Tabs defaultValue="voice" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 bg-zinc-100 dark:bg-zinc-800 p-1 rounded-lg">
-            <TabsTrigger 
-              value="voice" 
-              className="flex items-center gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-900 data-[state=active]:text-purple-600 dark:data-[state=active]:text-purple-400"
-            >
-              <Mic size={18} />
-              <span>Voice Analysis</span>
-            </TabsTrigger>
-            <TabsTrigger 
-              value="manual" 
-              className="flex items-center gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-900 data-[state=active]:text-purple-600 dark:data-[state=active]:text-purple-400"
-            >
-              <ClipboardList size={18} />
-              <span>Manual Input</span>
-            </TabsTrigger>
-            <TabsTrigger 
-              value="advanced" 
-              className="flex items-center gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-900 data-[state=active]:text-purple-600 dark:data-[state=active]:text-purple-400"
-            >
-              <Settings size={18} />
-              <span>Advanced Settings</span>
-            </TabsTrigger>
-          </TabsList>
-
-          {/* Voice Analysis Tab */}
-        <TabsContent value="voice" className="mt-4">
-            <Card className="border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-shadow duration-200">
-              <CardHeader className="flex flex-row items-center gap-2 pb-2">
-                <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/30">
-                  <Mic size={20} className="text-purple-600 dark:text-purple-400" />
-                </div>
-                <CardTitle className="text-xl">Voice Analysis</CardTitle>
+        {/* Main Content */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Left Sidebar - Progress and Info */}
+          <div className="lg:col-span-1 space-y-6">
+            {/* Progress Card */}
+            <Card className="border-0 shadow-md overflow-hidden bg-gradient-to-br from-white to-purple-50 dark:from-gray-900 dark:to-purple-950/30">
+              <CardHeader className="pb-2 border-b border-purple-100 dark:border-purple-900/30">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                  Assessment Progress
+                </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                  Voice analysis can detect subtle changes in speech patterns that may be indicative of Parkinson's disease.
-                  Record your voice saying "aaah" for 5-10 seconds.
-                </p>
-                
-                <div className="my-8">
-                  <EnhancedVoiceRecorder onVoiceAnalyzed={handleVoiceAnalyzed} />
-                </div>
-                
-                {voiceFeatures && (
-                  <div className="mt-6 p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-100 dark:border-purple-800">
-                    <h4 className="font-medium mb-3 text-purple-900 dark:text-purple-100">Voice Features Detected</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-zinc-600 dark:text-zinc-400">Avg. Frequency (Hz)</span>
-                          <span className="font-mono text-purple-600 dark:text-purple-400">{voiceFeatures.mdvpFo?.toFixed(2)}</span>
+              <CardContent className="pt-4">
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
+                        Form Completion
+                      </span>
+                      <span className="text-sm font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded-full">
+                        {progress}%
+                      </span>
+                    </div>
+                    <Progress 
+                      value={progress}
+                      className="h-2 bg-gray-100 dark:bg-gray-800 [&>div]:bg-gradient-to-r [&>div]:from-purple-600 [&>div]:to-indigo-500 dark:[&>div]:from-purple-500 dark:[&>div]:to-indigo-400"
+                    />
+                  </div>
+
+                  <div className="pt-2">
+                    <div className="flex flex-col space-y-2">
+                      <div className="flex items-center gap-2">
+                        <div className={`h-4 w-4 rounded-full flex items-center justify-center ${activeTab === "voice" ? "bg-purple-600 dark:bg-purple-500" : "bg-gray-200 dark:bg-gray-700"}`}>
+                          {activeTab === "voice" && <div className="h-1.5 w-1.5 rounded-full bg-white"></div>}
                         </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-zinc-600 dark:text-zinc-400">Max Frequency (Hz)</span>
-                          <span className="font-mono text-purple-600 dark:text-purple-400">{voiceFeatures.mdvpFhi?.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-zinc-600 dark:text-zinc-400">Min Frequency (Hz)</span>
-                          <span className="font-mono text-purple-600 dark:text-purple-400">{voiceFeatures.mdvpFlo?.toFixed(2)}</span>
-                        </div>
+                        <span className={`text-sm ${activeTab === "voice" ? "font-medium text-purple-600 dark:text-purple-400" : "text-gray-600 dark:text-gray-400"}`}>
+                          Voice Analysis
+                        </span>
                       </div>
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-zinc-600 dark:text-zinc-400">Jitter (%)</span>
-                          <span className="font-mono text-purple-600 dark:text-purple-400">{(voiceFeatures.mdvpJitter || 0) * 100}</span>
+                      <div className="flex items-center gap-2">
+                        <div className={`h-4 w-4 rounded-full flex items-center justify-center ${activeTab === "symptoms" ? "bg-purple-600 dark:bg-purple-500" : "bg-gray-200 dark:bg-gray-700"}`}>
+                          {activeTab === "symptoms" && <div className="h-1.5 w-1.5 rounded-full bg-white"></div>}
                         </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-zinc-600 dark:text-zinc-400">Shimmer (%)</span>
-                          <span className="font-mono text-purple-600 dark:text-purple-400">{(voiceFeatures.mdvpShimmer || 0) * 100}</span>
+                        <span className={`text-sm ${activeTab === "symptoms" ? "font-medium text-purple-600 dark:text-purple-400" : "text-gray-600 dark:text-gray-400"}`}>
+                          Clinical Symptoms
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className={`h-4 w-4 rounded-full flex items-center justify-center ${activeTab === "model" ? "bg-purple-600 dark:bg-purple-500" : "bg-gray-200 dark:bg-gray-700"}`}>
+                          {activeTab === "model" && <div className="h-1.5 w-1.5 rounded-full bg-white"></div>}
                         </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-zinc-600 dark:text-zinc-400">Noise-Harmonic Ratio</span>
-                          <span className="font-mono text-purple-600 dark:text-purple-400">{voiceFeatures.nhr?.toFixed(4)}</span>
-                        </div>
+                        <span className={`text-sm ${activeTab === "model" ? "font-medium text-purple-600 dark:text-purple-400" : "text-gray-600 dark:text-gray-400"}`}>
+                          Model Selection
+                        </span>
                       </div>
                     </div>
                   </div>
-                )}
+                </div>
               </CardContent>
-              <CardFooter>
-                <div className="w-full text-center text-xs text-zinc-500 dark:text-zinc-400">
-                  Voice recordings are processed locally and not stored on our servers.
-                </div>
-              </CardFooter>
             </Card>
-            <div className="flex justify-end mt-4">
-              <Button
-                onClick={() => onSubmit(form.getValues())}
-                disabled={isSubmitting || !voiceFeatures}
-                className="bg-purple-600 hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600"
-              >
-                {isSubmitting ? (
-                  <>
-                    <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
-                    <span>Processing...</span>
-                  </>
-                ) : (
-                  <>
-                    <Send size={16} className="mr-2" />
-                    <span>Submit Voice Analysis</span>
-                  </>
-                )}
-              </Button>
-          </div>
-        </TabsContent>
 
-          {/* Manual Input Tab */}
-          <TabsContent value="manual" className="mt-4">
-            <Card className="border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-shadow duration-200">
-              <CardHeader className="flex flex-row items-center gap-2 pb-2">
-                <div className="p-2 rounded-lg bg-teal-100 dark:bg-teal-900/30">
-                  <ClipboardList size={20} className="text-teal-600 dark:text-teal-400" />
-                </div>
-                <CardTitle className="text-xl">Manual Assessment Input</CardTitle>
+            {/* Info Card */}
+            <Card className="border-0 shadow-md overflow-hidden bg-gradient-to-br from-white to-blue-50 dark:from-gray-900 dark:to-blue-950/30">
+              <CardHeader className="pb-2 border-b border-blue-100 dark:border-blue-900/30">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <HelpCircle className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                  About This Assessment
+                </CardTitle>
               </CardHeader>
-              <CardContent>
-                {/* Voice Parameters Section */}
-                <div className="space-y-6">
-                  <div className="flex items-center gap-2">
-                    <LineChart size={18} className="text-teal-600 dark:text-teal-400" />
-                    <h3 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Voice Parameters (Optional)</h3>
-                  </div>
-                  <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                    These advanced parameters are optional and are typically extracted from voice recordings. 
-                    If you've already completed a voice analysis, you can leave these fields empty.
+              <CardContent className="pt-4">
+                <div className="space-y-3 text-sm">
+                  <p className="text-gray-700 dark:text-gray-300">
+                    This assessment combines clinical symptoms and voice analysis to evaluate Parkinson's disease risk factors.
                   </p>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-4">
-                      <h4 className="text-md font-medium text-zinc-900 dark:text-zinc-100">Vocal Frequency</h4>
-                      
-                      {/* MDVP:Fo(Hz) */}
-                      <FormField
-                        control={form.control}
-                        name="mdvpFo"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-zinc-700 dark:text-zinc-300">Avg. Fundamental Frequency (Hz)</FormLabel>
-                            <FormControl>
-                              <Input 
-                                type="number" 
-                                step="0.01"
-                                placeholder="120-180 Hz"
-                                {...field}
-                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
-                                className="border-zinc-200 dark:border-zinc-800 focus:border-teal-500 dark:focus:border-teal-400"
-                              />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
-                      
-                      {/* Jitter */}
-                      <FormField
-                        control={form.control}
-                        name="mdvpJitter"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-zinc-700 dark:text-zinc-300">Jitter (%)</FormLabel>
-                            <FormControl>
-                              <Input 
-                                type="number" 
-                                step="0.0001"
-                                placeholder="0.001-0.01"
-                                {...field}
-                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
-                                className="border-zinc-200 dark:border-zinc-800 focus:border-teal-500 dark:focus:border-teal-400"
-                              />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
-                  </div>
-                  
-                    <div className="space-y-4">
-                      <h4 className="text-md font-medium text-zinc-900 dark:text-zinc-100">Shimmer & Noise</h4>
-                      
-                      {/* MDVP:Shimmer */}
-                      <FormField
-                        control={form.control}
-                        name="mdvpShimmer"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-zinc-700 dark:text-zinc-300">Shimmer (%)</FormLabel>
-                            <FormControl>
-                              <Input 
-                                type="number" 
-                                step="0.001"
-                                placeholder="0.02-0.06"
-                                {...field}
-                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
-                                className="border-zinc-200 dark:border-zinc-800 focus:border-teal-500 dark:focus:border-teal-400"
-                              />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
-                      
-                      {/* NHR */}
-                      <FormField
-                        control={form.control}
-                        name="nhr"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-zinc-700 dark:text-zinc-300">Noise-to-Harmonics Ratio</FormLabel>
-                            <FormControl>
-                              <Input 
-                                type="number" 
-                                step="0.001"
-                                placeholder="0.01-0.05"
-                                {...field}
-                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
-                                className="border-zinc-200 dark:border-zinc-800 focus:border-teal-500 dark:focus:border-teal-400"
-                              />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                  </div>
-                    </div>
-              </CardContent>
-            </Card>
-            <div className="flex justify-end mt-4">
-              <Button
-                type="submit"
-                form="manual-form"
-                onClick={() => onSubmit(form.getValues())}
-                disabled={isSubmitting}
-                className="bg-teal-600 hover:bg-teal-700 dark:bg-teal-500 dark:hover:bg-teal-600"
-              >
-                {isSubmitting ? (
-                  <>
-                    <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
-                    <span>Processing...</span>
-                  </>
-                ) : (
-                  <>
-                    <Send size={16} className="mr-2" />
-                    <span>Submit Manual Assessment</span>
-                  </>
-                )}
-              </Button>
-          </div>
-        </TabsContent>
-        
-          {/* Advanced Settings Tab */}
-        <TabsContent value="advanced" className="mt-4">
-            <Card className="border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-shadow duration-200">
-              <CardHeader className="flex flex-row items-center gap-2 pb-2">
-                <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/30">
-                  <Settings size={20} className="text-purple-600 dark:text-purple-400" />
-                </div>
-                <CardTitle className="text-xl">Advanced ML Settings</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
-                  Configure which machine learning model to use for your assessment. Each model has different 
-                  strengths depending on the data available.
-                </p>
-                
-                <ModelSelector 
-                  selectedModel={selectedModel} 
-                  onModelChange={handleModelChange}
-                />
-                
-                <div className="mt-6 p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-100 dark:border-purple-800">
-                  <h4 className="font-medium mb-3 text-purple-900 dark:text-purple-100">Model Details</h4>
-                  <div className="space-y-4">
-                    <div>
-                      <h5 className="text-sm font-medium text-purple-900 dark:text-purple-100">XGBoost</h5>
-                      <p className="text-xs text-zinc-600 dark:text-zinc-400">
-                        A gradient boosting algorithm that excels at handling mixed clinical and voice features.
-                        Good at finding complex patterns in data.
-                      </p>
-                    </div>
-                    
-                    <div>
-                      <h5 className="text-sm font-medium text-purple-900 dark:text-purple-100">Random Forest</h5>
-                      <p className="text-xs text-zinc-600 dark:text-zinc-400">
-                        An ensemble of decision trees that is robust against overfitting and handles
-                        missing data well. Effective with limited voice features.
-                      </p>
-                    </div>
-                    
-                    <div>
-                      <h5 className="text-sm font-medium text-purple-900 dark:text-purple-100">Neural Network</h5>
-                      <p className="text-xs text-zinc-600 dark:text-zinc-400">
-                        Deep learning model that excels at finding complex patterns in rich voice datasets.
-                        May overfit with limited data.
-                      </p>
-                    </div>
-                    
-                    <div>
-                      <h5 className="text-sm font-medium text-purple-900 dark:text-purple-100">Support Vector Machine</h5>
-                      <p className="text-xs text-zinc-600 dark:text-zinc-400">
-                        Effective at separating borderline cases in high-dimensional feature spaces.
-                        Works well with strong clinical features.
-                      </p>
-                    </div>
-                    
-                    <div>
-                      <h5 className="text-sm font-medium text-purple-900 dark:text-purple-100">Ensemble (Recommended)</h5>
-                      <p className="text-xs text-zinc-600 dark:text-zinc-400">
-                        Combines predictions from all models, weighted by confidence, for maximum accuracy.
-                        The best choice for most users.
-                      </p>
-                    </div>
+                  <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
+                    <h4 className="font-medium text-blue-800 dark:text-blue-300 mb-1">How it works:</h4>
+                    <ul className="space-y-2 text-blue-700 dark:text-blue-400">
+                      <li className="flex items-start gap-2">
+                        <Mic className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                        <span>Record your voice for acoustic analysis</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Stethoscope className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                        <span>Report any clinical symptoms you experience</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Brain className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                        <span>AI models analyze your data for risk assessment</span>
+                      </li>
+                    </ul>
                   </div>
                 </div>
               </CardContent>
             </Card>
-            <div className="flex justify-end mt-4">
-              <Button
-                type="submit"
-                form="manual-form"
-                disabled={isSubmitting}
-                className="bg-purple-600 hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600"
-              >
-                {isSubmitting ? (
-                  <>
-                    <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
-                    <span>Processing...</span>
-                  </>
-                ) : (
-                  <>
-                    <Settings size={16} className="mr-2" />
-                    <span>Apply Settings</span>
-                  </>
-                )}
-              </Button>
           </div>
-        </TabsContent>
-      </Tabs>
 
-        {/* Disclaimer */}
-        <div className="text-sm text-zinc-600 dark:text-zinc-400 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-100 dark:border-yellow-800">
-        <p className="flex items-start gap-2">
-          <AlertTriangle size={18} className="text-yellow-500 shrink-0 mt-0.5" />
-          <span>
-              <strong className="text-yellow-700 dark:text-yellow-300">Note:</strong> This tool is for informational purposes only and does not replace professional medical advice.
-            If you are concerned about your symptoms, please consult a healthcare professional.
-          </span>
-        </p>
+          {/* Main Form Area */}
+          <div className="lg:col-span-2">
+            <Form {...form}>
+              <Card className="border-0 shadow-lg overflow-hidden">
+                <CardHeader className="bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-950/30 dark:to-indigo-950/30 border-b">
+                  <CardTitle className="text-xl">
+                    {activeTab === "voice" && "Voice Analysis"}
+                    {activeTab === "symptoms" && "Clinical Symptoms Assessment"}
+                    {activeTab === "model" && "Model Selection & Submission"}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                    <TabsList className="w-full rounded-none h-12 bg-gray-50 dark:bg-gray-900/50 border-b">
+                      <TabsTrigger 
+                        value="voice" 
+                        className="flex-1 h-12 data-[state=active]:border-b-2 data-[state=active]:border-purple-600 data-[state=active]:text-purple-600 dark:data-[state=active]:text-purple-400 rounded-none"
+                      >
+                        <Mic className="h-4 w-4 mr-2" />
+                        Voice Analysis
+                      </TabsTrigger>
+                      <TabsTrigger 
+                        value="symptoms" 
+                        className="flex-1 h-12 data-[state=active]:border-b-2 data-[state=active]:border-purple-600 data-[state=active]:text-purple-600 dark:data-[state=active]:text-purple-400 rounded-none"
+                      >
+                        <ActivitySquare className="h-4 w-4 mr-2" />
+                        Symptoms
+                      </TabsTrigger>
+                      <TabsTrigger 
+                        value="model" 
+                        className="flex-1 h-12 data-[state=active]:border-b-2 data-[state=active]:border-purple-600 data-[state=active]:text-purple-600 dark:data-[state=active]:text-purple-400 rounded-none"
+                      >
+                        <Settings className="h-4 w-4 mr-2" />
+                        Model & Submit
+                      </TabsTrigger>
+                    </TabsList>
+
+                    {/* Voice Analysis Tab */}
+                    <TabsContent value="voice" className="p-6 focus:outline-none">
+                      <div className="space-y-6">
+                        <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg border border-purple-100 dark:border-purple-900/30">
+                          <div className="flex gap-3 items-start">
+                            <Volume2 className="h-5 w-5 text-purple-600 dark:text-purple-400 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <h3 className="font-medium text-purple-900 dark:text-purple-300 mb-1">Voice Analysis</h3>
+                              <p className="text-sm text-purple-800/80 dark:text-purple-400/80">
+                                Record your voice saying "aaaaah" for 5 seconds. This helps our AI analyze vocal biomarkers 
+                                associated with Parkinson's disease.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-white dark:bg-gray-900 rounded-lg border p-6">
+                          <EnhancedVoiceRecorder onVoiceAnalyzed={handleVoiceAnalyzed} />
+                        </div>
+
+                        <div className="flex justify-end">
+                          <Button 
+                            type="button" 
+                            onClick={() => setActiveTab("symptoms")}
+                            className="bg-purple-600 hover:bg-purple-700 text-white"
+                          >
+                            Continue to Symptoms
+                            <ChevronRight className="ml-2 h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </TabsContent>
+
+                    {/* Symptoms Tab */}
+                    <TabsContent value="symptoms" className="p-6 focus:outline-none">
+                      <div className="space-y-6">
+                        {/* Personal Info */}
+                        <div>
+                          <h3 className="text-lg font-medium mb-3 flex items-center gap-2">
+                            <User className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                            Personal Information
+                          </h3>
+                          <div className="bg-white dark:bg-gray-900 rounded-lg border p-4">
+                            <FormField
+                              control={form.control}
+                              name="age"
+                              rules={{
+                                required: "Age is required",
+                                min: { value: 18, message: "Age must be 18 or older" },
+                                max: { value: 120, message: "Age must be realistic" }
+                              }}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel className="text-gray-700 dark:text-gray-300">Age</FormLabel>
+                                  <FormControl>
+                                    <Input 
+                                      type="number" 
+                                      min="18" 
+                                      max="120"
+                                      {...field}
+                                      onChange={e => field.onChange(parseInt(e.target.value))}
+                                      className="border-gray-200 dark:border-gray-800 focus:border-purple-500 dark:focus:border-purple-400"
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Clinical Symptoms */}
+                        <div>
+                          <h3 className="text-lg font-medium mb-3 flex items-center gap-2">
+                            <ActivitySquare className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                            Clinical Symptoms
+                          </h3>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Tremor */}
+                            <div className="bg-white dark:bg-gray-900 rounded-lg border p-4 hover:shadow-md transition-shadow">
+                              <FormField
+                                control={form.control}
+                                name="tremor"
+                                render={({ field }) => (
+                                  <FormItem className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                      <Radio className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                                      <FormLabel className="text-base font-medium text-gray-900 dark:text-gray-100 m-0">
+                                        Tremor
+                                      </FormLabel>
+                                    </div>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                                      {symptomDescriptions.tremor}
+                                    </p>
+                                    <FormControl>
+                                      <div className="flex items-center space-x-2 mt-2">
+                                        <Checkbox 
+                                          checked={field.value} 
+                                          onCheckedChange={field.onChange}
+                                          className="border-purple-400 data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
+                                        />
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                          I experience this symptom
+                                        </label>
+                                      </div>
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+                            </div>
+
+                            {/* Rigidity */}
+                            <div className="bg-white dark:bg-gray-900 rounded-lg border p-4 hover:shadow-md transition-shadow">
+                              <FormField
+                                control={form.control}
+                                name="rigidity"
+                                render={({ field }) => (
+                                  <FormItem className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                      <Radio className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                                      <FormLabel className="text-base font-medium text-gray-900 dark:text-gray-100 m-0">
+                                        Rigidity
+                                      </FormLabel>
+                                    </div>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                                      {symptomDescriptions.rigidity}
+                                    </p>
+                                    <FormControl>
+                                      <div className="flex items-center space-x-2 mt-2">
+                                        <Checkbox 
+                                          checked={field.value} 
+                                          onCheckedChange={field.onChange}
+                                          className="border-purple-400 data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
+                                        />
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                          I experience this symptom
+                                        </label>
+                                      </div>
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+                            </div>
+
+                            {/* Bradykinesia */}
+                            <div className="bg-white dark:bg-gray-900 rounded-lg border p-4 hover:shadow-md transition-shadow">
+                              <FormField
+                                control={form.control}
+                                name="bradykinesia"
+                                render={({ field }) => (
+                                  <FormItem className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                      <Radio className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                                      <FormLabel className="text-base font-medium text-gray-900 dark:text-gray-100 m-0">
+                                        Bradykinesia
+                                      </FormLabel>
+                                    </div>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                                      {symptomDescriptions.bradykinesia}
+                                    </p>
+                                    <FormControl>
+                                      <div className="flex items-center space-x-2 mt-2">
+                                        <Checkbox 
+                                          checked={field.value} 
+                                          onCheckedChange={field.onChange}
+                                          className="border-purple-400 data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
+                                        />
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                          I experience this symptom
+                                        </label>
+                                      </div>
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+                            </div>
+
+                            {/* Postural Instability */}
+                            <div className="bg-white dark:bg-gray-900 rounded-lg border p-4 hover:shadow-md transition-shadow">
+                              <FormField
+                                control={form.control}
+                                name="posturalInstability"
+                                render={({ field }) => (
+                                  <FormItem className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                      <Radio className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                                      <FormLabel className="text-base font-medium text-gray-900 dark:text-gray-100 m-0">
+                                        Postural Instability
+                                      </FormLabel>
+                                    </div>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                                      {symptomDescriptions.posturalInstability}
+                                    </p>
+                                    <FormControl>
+                                      <div className="flex items-center space-x-2 mt-2">
+                                        <Checkbox 
+                                          checked={field.value} 
+                                          onCheckedChange={field.onChange}
+                                          className="border-purple-400 data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
+                                        />
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                          I experience this symptom
+                                        </label>
+                                      </div>
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+                            </div>
+
+                            {/* Voice Changes */}
+                            <div className="bg-white dark:bg-gray-900 rounded-lg border p-4 hover:shadow-md transition-shadow">
+                              <FormField
+                                control={form.control}
+                                name="voiceChanges"
+                                render={({ field }) => (
+                                  <FormItem className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                      <Radio className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                                      <FormLabel className="text-base font-medium text-gray-900 dark:text-gray-100 m-0">
+                                        Voice Changes
+                                      </FormLabel>
+                                    </div>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                                      {symptomDescriptions.voiceChanges}
+                                    </p>
+                                    <FormControl>
+                                      <div className="flex items-center space-x-2 mt-2">
+                                        <Checkbox 
+                                          checked={field.value} 
+                                          onCheckedChange={field.onChange}
+                                          className="border-purple-400 data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
+                                        />
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                          I experience this symptom
+                                        </label>
+                                      </div>
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+                            </div>
+
+                            {/* Handwriting */}
+                            <div className="bg-white dark:bg-gray-900 rounded-lg border p-4 hover:shadow-md transition-shadow">
+                              <FormField
+                                control={form.control}
+                                name="handwriting"
+                                render={({ field }) => (
+                                  <FormItem className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                      <Radio className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                                      <FormLabel className="text-base font-medium text-gray-900 dark:text-gray-100 m-0">
+                                        Handwriting Changes
+                                      </FormLabel>
+                                    </div>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                                      {symptomDescriptions.handwriting}
+                                    </p>
+                                    <FormControl>
+                                      <div className="flex items-center space-x-2 mt-2">
+                                        <Checkbox 
+                                          checked={field.value} 
+                                          onCheckedChange={field.onChange}
+                                          className="border-purple-400 data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
+                                        />
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                          I experience this symptom
+                                        </label>
+                                      </div>
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-between">
+                          <Button 
+                            type="button" 
+                            variant="outline"
+                            onClick={() => setActiveTab("voice")}
+                            className="border-purple-200 dark:border-purple-800 hover:bg-purple-50 dark:hover:bg-purple-950/50"
+                          >
+                            Back to Voice Analysis
+                          </Button>
+                          <Button 
+                            type="button" 
+                            onClick={() => setActiveTab("model")}
+                            className="bg-purple-600 hover:bg-purple-700 text-white"
+                          >
+                            Continue to Model Selection
+                            <ChevronRight className="ml-2 h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </TabsContent>
+
+                    {/* Model Selection Tab */}
+                    <TabsContent value="model" className="p-6 focus:outline-none">
+                      <div className="space-y-6">
+                        <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-lg border border-indigo-100 dark:border-indigo-900/30">
+                          <div className="flex gap-3 items-start">
+                            <Brain className="h-5 w-5 text-indigo-600 dark:text-indigo-400 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <h3 className="font-medium text-indigo-900 dark:text-indigo-300 mb-1">Model Selection</h3>
+                              <p className="text-sm text-indigo-800/80 dark:text-indigo-400/80">
+                                Choose which AI model to use for your assessment. The ensemble model combines multiple 
+                                algorithms for the most comprehensive analysis.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-white dark:bg-gray-900 rounded-lg border p-6">
+                          <ModelSelector 
+                            selectedModel={selectedModel} 
+                            onModelChange={handleModelChange} 
+                          />
+                        </div>
+
+                        <div className="flex justify-between">
+                          <Button 
+                            type="button" 
+                            variant="outline"
+                            onClick={() => setActiveTab("symptoms")}
+                            className="border-purple-200 dark:border-purple-800 hover:bg-purple-50 dark:hover:bg-purple-950/50"
+                          >
+                            Back to Symptoms
+                          </Button>
+                          <Button 
+                            type="submit" 
+                            onClick={handleSubmit(onSubmit)}
+                            disabled={isSubmitting}
+                            className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white px-6"
+                          >
+                            {isSubmitting ? (
+                              <>
+                                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Processing...
+                              </>
+                            ) : (
+                              <>
+                                Submit Assessment
+                                <Send className="ml-2 h-4 w-4" />
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                </CardContent>
+              </Card>
+            </Form>
+          </div>
+        </div>
       </div>
     </div>
-    </Form>
   );
 };
 

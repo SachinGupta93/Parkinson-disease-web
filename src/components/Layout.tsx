@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Outlet } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import MainNav from './MainNav';
@@ -20,12 +20,12 @@ const Layout = () => {
   const apiUrl = baseApiUrl.endsWith('/api/v1') 
     ? baseApiUrl 
     : baseApiUrl;
-  const apiKey = import.meta.env.VITE_API_KEY || 'your-secure-api-key'; // Get API Key
-
-  console.log("Connecting to backend at:", apiUrl);
+  const apiKey = useMemo(() => import.meta.env.VITE_API_KEY || 'your-secure-api-key', []); // Memoize API Key
 
   // Check connection to backend on mount
   useEffect(() => {
+    console.log("Connecting to backend at:", apiUrl);
+    
     const checkBackendConnection = async () => {
       setIsCheckingConnection(true);
       try {
@@ -71,11 +71,11 @@ const Layout = () => {
     
     checkBackendConnection();
     
-    // Set up interval to periodically check connection
-    const interval = setInterval(checkBackendConnection, 60000); // Check every minute
+    // Set up interval to periodically check connection (reduced frequency)
+    const interval = setInterval(checkBackendConnection, 300000); // Check every 5 minutes instead of 1 minute
     
     return () => clearInterval(interval);
-  }, [apiUrl, apiKey]); // Added apiKey to dependency array
+  }, [apiUrl]); // Removed apiKey from dependency array since it's now memoized
 
   const retryConnection = async () => {
     setConnectionError(null);

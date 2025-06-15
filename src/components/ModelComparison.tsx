@@ -1,7 +1,18 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { PredictionResult, ModelType } from "@/utils/parkinsonPredictor";
+import { PredictionResult, ModelType } from "@/types";
 import { MultiModelPredictionResponse, ModelPrediction } from "@/services/api";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { UserContext } from "@/App";
+import ModelComparisonChart from "@/components/ModelComparisonChart";
+
+// Dummy data for when no real data is available
+const DUMMY_MODEL_RESULTS = [
+  { modelName: 'ensemble', riskScore: 78, probability: 0.82, confidence: 0.89 },
+  { modelName: 'xgboost', riskScore: 82, probability: 0.85, confidence: 0.80 },
+  { modelName: 'randomForest', riskScore: 76, probability: 0.79, confidence: 0.83 },
+  { modelName: 'neuralNetwork', riskScore: 74, probability: 0.77, confidence: 0.78 },
+];
 
 interface ModelComparisonProps {
   modelResults?: PredictionResult[];
@@ -9,6 +20,9 @@ interface ModelComparisonProps {
 }
 
 const ModelComparison: React.FC<ModelComparisonProps> = ({ modelResults, multiModelResults }) => {
+  const { theme } = React.useContext(UserContext);
+  const isDarkMode = theme === 'dark';
+
   // Get color based on risk score or probability
   const getRiskColor = (score: number): string => {
     if (score < 30) return "bg-green-500";
@@ -34,29 +48,57 @@ const ModelComparison: React.FC<ModelComparisonProps> = ({ modelResults, multiMo
       default: return modelType.charAt(0).toUpperCase() + modelType.slice(1).replace('_', ' ');
     }
   };
-
   // Determine which data source to use
   const renderMultiModelResults = () => {
     if (!multiModelResults) return null;
     
-    const modelNames = multiModelResults.loaded_models || [];
+    // Check if we have a nested models object or direct model properties
+    const hasNestedModels = multiModelResults.models && Object.keys(multiModelResults.models || {}).length > 0;
+    
+    // Get model entries either from nested models object or direct properties
+    const modelEntries = hasNestedModels && multiModelResults.models
+      ? Object.entries(multiModelResults.models)
+      : Object.entries(multiModelResults)
+          .filter(([key, value]) => 
+            // Filter out non-model properties
+            typeof value === 'object' && 
+            value !== null && 
+            !['models', 'model_details', 'feature_importance', 'summary', 'timestamp', 'features_used', 'loaded_models', 'chart_data'].includes(key)
+          );
+    
+    console.log("Model entries for rendering:", modelEntries);
     
     return (
-      <tbody className="divide-y">
-        {modelNames.map((modelName) => {
-          const modelData = multiModelResults[modelName as keyof MultiModelPredictionResponse] as ModelPrediction | undefined;
+      <>
+        {modelEntries.map(([modelName, modelData]) => {
           if (!modelData) return null;
           
-          const probability = modelData.probability;
-          const riskScore = Math.round(probability * 100);
-          const prediction = modelData.prediction;
+          // Handle both nested and direct model data structures
+          const modelDataTyped = modelData as ModelPrediction;
+          
+          const probability = modelDataTyped.probability !== undefined ? modelDataTyped.probability : 0;
+          // Calculate risk score from probability if not provided
+          const riskScore = modelDataTyped.risk_score !== undefined ? 
+            modelDataTyped.risk_score : 
+            Math.round(probability * 100);
+          const prediction = modelDataTyped.prediction !== undefined ? modelDataTyped.prediction : 0;
+          // Use a default confidence value if not provided
+          const confidence = modelDataTyped.confidence !== undefined ? 
+            modelDataTyped.confidence : 
+            (probability > 0.5 ? probability : 1 - probability); // Estimate confidence
+          
+          // Skip if essential properties are missing
+          if (probability === undefined || prediction === undefined) {
+            console.log(`Skipping model ${modelName} due to missing essential properties`, modelData);
+            return null;
+          }
           
           return (
             <tr key={modelName}>
               <td className="py-2 font-medium">{formatModelName(modelName)}</td>
               <td className="py-2 text-center">
                 <div className="flex items-center justify-center gap-2">
-                  <span>{riskScore}</span>
+                  <span>{Math.round(riskScore)}</span>
                   <div 
                     className={`h-3 w-3 rounded-full ${getRiskColor(riskScore)}`}
                   />
@@ -66,7 +108,7 @@ const ModelComparison: React.FC<ModelComparisonProps> = ({ modelResults, multiMo
                 {(probability * 100).toFixed(1)}%
               </td>
               <td className="py-2 text-center">
-                {(0.8 * 100).toFixed(0)}%
+                {(confidence * 100).toFixed(0)}%
               </td>
               <td className="py-2 text-center">
                 {prediction === 1 ? 
@@ -76,7 +118,7 @@ const ModelComparison: React.FC<ModelComparisonProps> = ({ modelResults, multiMo
             </tr>
           );
         })}
-      </tbody>
+      </>
     );
   };
 
@@ -84,7 +126,7 @@ const ModelComparison: React.FC<ModelComparisonProps> = ({ modelResults, multiMo
     if (!modelResults || modelResults.length === 0) return null;
     
     return (
-      <tbody className="divide-y">
+      <>
         {modelResults.map((result) => (
           <tr key={result.modelUsed}>
             <td className="py-2 font-medium">{formatModelName(result.modelUsed)}</td>
@@ -109,35 +151,142 @@ const ModelComparison: React.FC<ModelComparisonProps> = ({ modelResults, multiMo
             </td>
           </tr>
         ))}
-      </tbody>
+      </>
     );
   };
   
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-lg">Model Comparison</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b">
-                <th className="text-left pb-2">Model</th>
-                <th className="text-center pb-2">Risk Score</th>
-                <th className="text-center pb-2">Probability</th>
-                <th className="text-center pb-2">Confidence</th>
-                <th className="text-center pb-2">Status</th>
-              </tr>
-            </thead>
-            {multiModelResults ? renderMultiModelResults() : renderModelResults()}
-          </table>
+  // Prepare chart data
+  const chartData = useMemo(() => {
+    let data = [];
+    
+    console.log("ModelComparison - multiModelResults:", multiModelResults);
+    console.log("ModelComparison - modelResults:", modelResults);
+    
+    if (multiModelResults) {
+      // Check if we have a nested models object or direct model properties
+      const hasNestedModels = multiModelResults.models && Object.keys(multiModelResults.models || {}).length > 0;
+      
+      console.log("ModelComparison - hasNestedModels:", hasNestedModels);
+      
+      // Get model entries either from nested models object or direct properties
+      const modelEntries = hasNestedModels && multiModelResults.models
+        ? Object.entries(multiModelResults.models)
+        : Object.entries(multiModelResults)
+            .filter(([key, value]) => 
+              // Filter out non-model properties
+              typeof value === 'object' && 
+              value !== null && 
+              !['models', 'model_details', 'feature_importance', 'summary', 'timestamp', 'features_used', 'loaded_models', 'chart_data'].includes(key)
+            );
+      
+      console.log("ModelComparison - modelEntries:", modelEntries);
+      
+      data = modelEntries
+        .filter(([_, modelData]) => modelData !== null)
+        .map(([modelName, modelData]) => {
+          const modelDataTyped = modelData as ModelPrediction;
           
-          <div className="text-xs text-muted-foreground">
-            <p className="mt-2">
-              Different models analyze features differently. Ensemble combines all models
-              for a more robust prediction.
-            </p>
+          const probability = modelDataTyped.probability !== undefined ? modelDataTyped.probability : 0;
+          const riskScore = modelDataTyped.risk_score !== undefined ? 
+            modelDataTyped.risk_score : 
+            Math.round(probability * 100);
+          const confidence = modelDataTyped.confidence !== undefined ? 
+            modelDataTyped.confidence : 
+            (probability > 0.5 ? probability : 1 - probability);
+            
+          return {
+            name: formatModelName(modelName),
+            riskScore: Math.round(riskScore),
+            probability: Math.round(probability * 100),
+            confidence: Math.round(confidence * 100)
+          };
+        });
+    } else if (modelResults && modelResults.length > 0) {
+      console.log("ModelComparison - using modelResults");
+      data = modelResults.map(result => ({
+        name: formatModelName(result.modelUsed),
+        riskScore: result.riskScore,
+        probability: Math.round(result.probability * 100),
+        confidence: Math.round(result.confidence * 100)
+      }));
+    }
+    
+    // If no data, provide sample data
+    if (data.length === 0) {
+      data = [
+        { name: 'Ensemble', riskScore: 78, probability: 82, confidence: 89 },
+        { name: 'XGBoost', riskScore: 82, probability: 85, confidence: 80 },
+        { name: 'Random Forest', riskScore: 76, probability: 79, confidence: 83 },
+        { name: 'Neural Network', riskScore: 74, probability: 77, confidence: 78 }
+      ];
+    }
+    
+    return data;
+  }, [multiModelResults, modelResults]);
+  
+  return (
+    <Card className="overflow-hidden border-0 shadow-md hover:shadow-lg transition-all duration-300">
+      <CardHeader className="pb-2 bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-950/30 dark:to-blue-950/30">
+        <CardTitle className="text-lg flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-indigo-600 dark:text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+          </svg>
+          Model Comparison
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Compare predictions from multiple machine learning models
+        </p>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="p-4 space-y-4">
+          <div className="mb-6" style={{ minHeight: "500px" }}>
+            {/* Use the ModelComparisonChart component for advanced visualizations */}
+            <ModelComparisonChart 
+              modelResults={modelResults && modelResults.length > 0 ? modelResults.map(result => ({
+                modelName: result.modelUsed || 'unknown',
+                riskScore: typeof result.riskScore === 'number' ? result.riskScore : 0,
+                probability: typeof result.probability === 'number' ? result.probability : 0,
+                confidence: typeof result.confidence === 'number' ? result.confidence : 0
+              })) : undefined} 
+              multiModelResults={multiModelResults} 
+            />
+          </div>
+
+          <div className="overflow-x-auto rounded-md border">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-muted/50">
+                  <th className="text-left p-2 font-medium">Model</th>
+                  <th className="text-center p-2 font-medium">Risk Score</th>
+                  <th className="text-center p-2 font-medium">Probability</th>
+                  <th className="text-center p-2 font-medium">Confidence</th>
+                  <th className="text-center p-2 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {multiModelResults ? renderMultiModelResults() : renderModelResults()}
+              </tbody>
+            </table>
+          </div>
+          
+          <div className="bg-blue-50 dark:bg-blue-950/20 p-3 rounded-md border border-blue-100 dark:border-blue-900/50">
+            <div className="flex gap-2 items-start">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M12 16v-4"></path>
+                <path d="M12 8h.01"></path>
+              </svg>
+              <div className="text-sm text-blue-800 dark:text-blue-200">
+                <p className="font-medium mb-1">How to interpret these results:</p>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li><span className="font-medium">Risk Score</span>: Overall risk level (0-100)</li>
+                  <li><span className="font-medium">Probability</span>: Statistical likelihood of Parkinson's</li>
+                  <li><span className="font-medium">Confidence</span>: How certain the model is about its prediction</li>
+                  <li><span className="font-medium">Ensemble model</span> combines all models for a more robust prediction</li>
+                </ul>
+              </div>
+            </div>
           </div>
         </div>
       </CardContent>

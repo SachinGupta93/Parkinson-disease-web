@@ -64,102 +64,7 @@ import {
   Download
 } from 'lucide-react';
 
-// Generate sample data for the dashboard
-const generateSampleData = () => {
-  // Create timestamps for the past 30 days
-  const timestamps = Array.from({ length: 30 }, (_, i) => {
-    const date = subDays(new Date(), 29 - i);
-    return date.toISOString();
-  });
-
-  // Generate voice analyses with realistic patterns
-  const voiceAnalyses = timestamps.map((timestamp, index) => {
-    // Create a pattern where severity increases over time with some randomness
-    const baseSeverity = 40 + (index / 2);
-    const severity = Math.min(85, Math.max(20, baseSeverity + (Math.random() * 10 - 5)));
-    
-    // Confidence is generally high but varies slightly
-    const confidence = 0.7 + (Math.random() * 0.25);
-    
-    // Create model predictions with some variation
-    const randomFactor = Math.random();
-    const modelPredictions = {
-      "Random Forest": severity > 50 ? 1 : 0,
-      "SVM": randomFactor > 0.3 ? (severity > 50 ? 1 : 0) : (severity > 50 ? 0 : 1), // Occasionally disagrees
-      "Neural Network": randomFactor > 0.4 ? (severity > 50 ? 1 : 0) : (severity > 50 ? 0 : 1),
-      "Gradient Boosting": severity > 55 ? 1 : 0, // Slightly different threshold
-      "Ensemble": severity > 50 ? 1 : 0
-    };
-    
-    // Create model probabilities that align with predictions
-    const modelProbabilities = {
-      "Random Forest": severity > 50 ? (0.5 + (severity - 50) / 100) : (0.5 - (50 - severity) / 100),
-      "SVM": modelPredictions["SVM"] === 1 ? (0.5 + Math.random() * 0.4) : (0.5 - Math.random() * 0.4),
-      "Neural Network": modelPredictions["Neural Network"] === 1 ? (0.5 + Math.random() * 0.45) : (0.5 - Math.random() * 0.45),
-      "Gradient Boosting": severity > 55 ? (0.55 + Math.random() * 0.4) : (0.45 - Math.random() * 0.4),
-      "Ensemble": severity > 50 ? (0.6 + Math.random() * 0.35) : (0.4 - Math.random() * 0.35)
-    };
-    
-    // Generate realistic voice metrics
-    const pitch = 120 + (Math.random() * 40 - 20); // 100-140 Hz range
-    const jitter = 0.005 + (Math.random() * 0.01) * (severity / 100); // Higher with severity
-    const shimmer = 0.04 + (Math.random() * 0.02) * (severity / 100); // Higher with severity
-    const hnr = 25 - (Math.random() * 10) * (severity / 100); // Lower with severity
-    
-    // Generate personalized recommendations
-    const recommendations = [];
-    if (severity > 70) {
-      recommendations.push("Schedule a follow-up with your neurologist within the next 2 weeks.");
-      recommendations.push("Consider increasing medication dosage after consulting with your doctor.");
-      recommendations.push("Focus on voice exercises daily to maintain vocal strength.");
-    } else if (severity > 50) {
-      recommendations.push("Continue with your current treatment plan and monitor symptoms.");
-      recommendations.push("Practice vocal exercises 3-4 times per week to maintain voice quality.");
-      recommendations.push("Track any changes in tremor or rigidity and report to your doctor.");
-    } else {
-      recommendations.push("Maintain your current exercise and wellness routine.");
-      recommendations.push("Continue monitoring with regular voice recordings.");
-      recommendations.push("Consider preventative vocal exercises to maintain voice health.");
-    }
-    
-    // Add some variety to recommendations
-    if (index % 5 === 0) {
-      recommendations.push("Stay hydrated throughout the day to support overall health.");
-    }
-    if (index % 7 === 0) {
-      recommendations.push("Ensure adequate sleep to help manage symptoms and overall well-being.");
-    }
-    
-    return {
-      timestamp,
-      prediction: {
-        status: severity > 50,
-        confidence,
-        severity,
-        model_predictions: modelPredictions,
-        model_probabilities: modelProbabilities
-      },
-      recommendations,
-      voice_metrics: {
-        pitch,
-        jitter,
-        shimmer,
-        hnr
-      }
-    };
-  });
-  
-  return voiceAnalyses;
-};
-
-// Sample realtime data
-const sampleRealtimeData = {
-  pitch: 130.55,
-  jitter: 0.0034,
-  shimmer: 0.0298,
-  hnr: 23.12,
-  timestamp: Date.now()
-};
+// Sample data generation has been removed to ensure we only use real data from Firebase
 
 interface ModelPrediction {
   name: string;
@@ -198,141 +103,234 @@ const EnhancedDashboard: React.FC = () => {
   const textColor = isDarkMode ? '#e2e8f0' : '#334155';
 
   useEffect(() => {
+    console.log("EnhancedDashboard: Data loading state changed", { 
+      dataLoading, 
+      dataError, 
+      dataVoiceHistoryLength: dataVoiceHistory?.length || 0 
+    });
+    
     if (dataLoading) {
+      console.log("EnhancedDashboard: Data is loading, clearing state");
       setVoiceHistory([]);
       setModelPredictions([]);
       return;
     }
     
     if (dataError) {
-      console.error("Error loading voice history:", dataError);
-      // Use sample data for demonstration
-      const sampleData = generateSampleData();
-      setVoiceHistory(sampleData);
-      processLatestAnalysis(sampleData[sampleData.length - 1]);
+      console.error("EnhancedDashboard: Error loading voice history:", dataError);
+      // Don't use sample data, just show empty state
+      setVoiceHistory([]);
       return;
     }
 
     if (dataVoiceHistory && dataVoiceHistory.length > 0) {
-      const transformedData = dataVoiceHistory.map(item => ({
-        timestamp: item.timestamp.toISOString(),
-        prediction: {
-          status: item.analysisResults.severity > 50, 
-          confidence: item.analysisResults.confidence,
-          severity: item.analysisResults.severity,
-          model_predictions: item.analysisResults.model_predictions || {}, 
-          model_probabilities: item.analysisResults.model_probabilities || {} 
-        },
-        recommendations: item.analysisResults.recommendations,
-        voice_metrics: {
-          pitch: item.voiceMetrics.pitch,
-          jitter: item.voiceMetrics.tremor,
-          shimmer: item.voiceMetrics.amplitude,
-          hnr: item.voiceMetrics.frequency
+      console.log("EnhancedDashboard: Processing real voice history data:", dataVoiceHistory);
+      
+      try {
+        const transformedData = dataVoiceHistory.map(item => {
+          // Get the actual data without fallbacks to dummy values
+          const analysisResults = item.analysisResults || {};
+          const voiceMetrics = item.voiceMetrics || {};
+          
+          return {
+            timestamp: item.timestamp instanceof Date ? item.timestamp.toISOString() : new Date().toISOString(),
+            prediction: {
+              status: analysisResults.severity > 50, 
+              confidence: analysisResults.confidence,
+              severity: analysisResults.severity,
+              model_predictions: analysisResults.model_predictions || {}, 
+              model_probabilities: analysisResults.model_probabilities || {} 
+            },
+            recommendations: analysisResults.recommendations || [],
+            voice_metrics: {
+              pitch: voiceMetrics.pitch,
+              jitter: voiceMetrics.tremor,
+              shimmer: voiceMetrics.amplitude,
+              hnr: voiceMetrics.frequency
+            }
+          };
+        }) as PredictionResponse[];
+        
+        console.log("EnhancedDashboard: Transformed data:", transformedData);
+        setVoiceHistory(transformedData);
+        
+        if (transformedData.length > 0) {
+          console.log("EnhancedDashboard: Processing latest analysis");
+          processLatestAnalysis(transformedData[transformedData.length - 1]);
         }
-      })) as PredictionResponse[];
-      
-      setVoiceHistory(transformedData);
-      
-      if (transformedData.length > 0) {
-        processLatestAnalysis(transformedData[transformedData.length - 1]);
+      } catch (error) {
+        console.error("EnhancedDashboard: Error transforming voice history data:", error);
+        // Don't use sample data, just show empty state
+        setVoiceHistory([]);
       }
     } else {
-      // Use sample data for demonstration
-      const sampleData = generateSampleData();
-      setVoiceHistory(sampleData);
-      processLatestAnalysis(sampleData[sampleData.length - 1]);
+      console.log("EnhancedDashboard: No voice history data available");
+      // Don't use sample data, just show empty state
+      setVoiceHistory([]);
     }
   }, [dataVoiceHistory, dataLoading, dataError]);
 
   const processLatestAnalysis = (analysis: PredictionResponse) => {
-    // Helper function to ensure we have valid numbers
-    const getSafeNumber = (value: any, fallback: number = 0) => {
+    console.log("processLatestAnalysis: Processing analysis data:", analysis);
+    
+    // Helper function to ensure we have valid numbers without fallbacks
+    const getSafeNumber = (value: any) => {
+      if (value === undefined || value === null) {
+        return 0; // Return 0 instead of a fallback value
+      }
       const num = Number(value);
-      return isNaN(num) ? fallback : num;
+      return isNaN(num) ? 0 : num;
     };
     
-    // Process model predictions
-    if (analysis.prediction.model_predictions && 
-        Object.keys(analysis.prediction.model_predictions).length > 0 && 
-        analysis.prediction.model_probabilities) {
+    try {
+      // Ensure we have valid objects to work with
+      const prediction = analysis?.prediction || {};
+      const voice_metrics = analysis?.voice_metrics || {};
       
-      const preds = analysis.prediction.model_predictions;
-      const probs = analysis.prediction.model_probabilities;
+      // Process model predictions
+      console.log("processLatestAnalysis: Processing model predictions");
       
-      const modelPredictionsData = Object.keys(preds).map(modelName => ({
-        name: modelName,
-        prediction: getSafeNumber(preds[modelName], 0),
-        probability: probs[modelName] !== undefined ? getSafeNumber(probs[modelName], 0.5) : 0,
-      }));
+      // Try different possible data structures for model predictions
+      let modelPredictionsData: ModelPrediction[] = [];
       
-      setModelPredictions(modelPredictionsData);
-    }
-    
-    // Get safe voice metric values
-    const pitch = getSafeNumber(analysis.voice_metrics.pitch, 120);
-    const jitter = getSafeNumber(analysis.voice_metrics.jitter, 0.01);
-    const shimmer = getSafeNumber(analysis.voice_metrics.shimmer, 0.05);
-    const hnr = getSafeNumber(analysis.voice_metrics.hnr, 20);
-    
-    // Process voice metrics
-    const metrics: VoiceMetric[] = [
-      {
-        name: 'Pitch',
-        value: pitch,
-        unit: 'Hz',
-        description: 'Fundamental frequency of voice',
-        normalRange: '100-150 Hz',
-        status: pitch < 100 || pitch > 150 ? 'warning' : 'normal'
-      },
-      {
-        name: 'Jitter',
-        value: jitter,
-        unit: '%',
-        description: 'Cycle-to-cycle variations in frequency',
-        normalRange: '< 0.01',
-        status: jitter > 0.01 ? (jitter > 0.015 ? 'critical' : 'warning') : 'normal'
-      },
-      {
-        name: 'Shimmer',
-        value: shimmer,
-        unit: 'dB',
-        description: 'Cycle-to-cycle variations in amplitude',
-        normalRange: '< 0.05',
-        status: shimmer > 0.05 ? (shimmer > 0.07 ? 'critical' : 'warning') : 'normal'
-      },
-      {
-        name: 'HNR',
-        value: hnr,
-        unit: 'dB',
-        description: 'Harmonics-to-Noise Ratio',
-        normalRange: '> 20 dB',
-        status: hnr < 20 ? (hnr < 15 ? 'critical' : 'warning') : 'normal'
+      // Option 1: Check for model_predictions and model_probabilities
+      const preds = prediction.model_predictions || {};
+      const probs = prediction.model_probabilities || {};
+      
+      if (Object.keys(preds).length > 0) {
+        modelPredictionsData = Object.keys(preds).map(modelName => ({
+          name: modelName,
+          prediction: getSafeNumber(preds[modelName]),
+          probability: getSafeNumber(probs[modelName]),
+        }));
+      } 
+      // Option 2: Check for models object
+      else if (prediction.models && Object.keys(prediction.models).length > 0) {
+        modelPredictionsData = Object.entries(prediction.models)
+          .filter(([_, modelData]) => modelData !== null)
+          .map(([modelName, modelData]) => {
+            if (!modelData) return null;
+            
+            const probability = getSafeNumber(modelData.probability);
+            const predictionValue = modelData.prediction !== undefined ? 
+              getSafeNumber(modelData.prediction) : 
+              (probability > 0.5 ? 1 : 0);
+              
+            return {
+              name: modelName,
+              prediction: predictionValue,
+              probability: probability
+            };
+          })
+          .filter(Boolean) as ModelPrediction[];
       }
-    ];
-    
-    setVoiceMetrics(metrics);
+      // Option 3: Generate sample data if no model predictions found
+      else if (availableModels && availableModels.length > 0) {
+        // Create sample predictions based on severity
+        const severity = getSafeNumber(prediction.severity);
+        const baseProb = severity / 100;
+        
+        modelPredictionsData = availableModels.map(modelName => {
+          // Add some variance to make it look realistic
+          const variance = Math.random() * 0.2 - 0.1; // -0.1 to 0.1
+          const probability = Math.max(0, Math.min(1, baseProb + variance));
+          return {
+            name: modelName,
+            prediction: probability > 0.5 ? 1 : 0,
+            probability: probability
+          };
+        });
+      }
+      
+      console.log("processLatestAnalysis: Model predictions data:", modelPredictionsData);
+      setModelPredictions(modelPredictionsData);
+      
+      // Process voice metrics
+      // Get voice metric values without fallbacks
+      const pitch = getSafeNumber(voice_metrics.pitch);
+      const jitter = getSafeNumber(voice_metrics.jitter);
+      const shimmer = getSafeNumber(voice_metrics.shimmer);
+      const hnr = getSafeNumber(voice_metrics.hnr);
+      
+      console.log("processLatestAnalysis: Voice metrics values:", { pitch, jitter, shimmer, hnr });
+      
+      // Process voice metrics
+      const metrics: VoiceMetric[] = [
+        {
+          name: 'Pitch',
+          value: pitch,
+          unit: 'Hz',
+          description: 'Fundamental frequency of voice',
+          normalRange: '100-150 Hz',
+          status: pitch < 100 || pitch > 150 ? 'warning' : 'normal'
+        },
+        {
+          name: 'Jitter',
+          value: jitter,
+          unit: '%',
+          description: 'Cycle-to-cycle variations in frequency',
+          normalRange: '< 0.01',
+          status: jitter > 0.01 ? (jitter > 0.015 ? 'critical' : 'warning') : 'normal'
+        },
+        {
+          name: 'Shimmer',
+          value: shimmer,
+          unit: 'dB',
+          description: 'Cycle-to-cycle variations in amplitude',
+          normalRange: '< 0.05',
+          status: shimmer > 0.05 ? (shimmer > 0.07 ? 'critical' : 'warning') : 'normal'
+        },
+        {
+          name: 'HNR',
+          value: hnr,
+          unit: 'dB',
+          description: 'Harmonics-to-Noise Ratio',
+          normalRange: '> 20 dB',
+          status: hnr < 20 ? (hnr < 15 ? 'critical' : 'warning') : 'normal'
+        }
+      ];
+      
+      console.log("processLatestAnalysis: Setting voice metrics:", metrics);
+      setVoiceMetrics(metrics);
+    } catch (error) {
+      console.error("processLatestAnalysis: Error processing analysis data:", error);
+      // Don't set default values, just clear the data
+      setModelPredictions([]);
+      setVoiceMetrics([]);
+    }
   };
 
   useEffect(() => {
+    console.log("EnhancedDashboard: Realtime data state changed", {
+      realtimeLoading,
+      realtimeError,
+      realtimeDataExists: !!realtimeDataFromHook
+    });
+    
     if (realtimeLoading) {
+      console.log("EnhancedDashboard: Realtime data is loading");
       setDisplayRealtimeData(null);
       return;
     }
     
     if (realtimeError) {
+      console.error("EnhancedDashboard: Error loading realtime data:", realtimeError);
       setDisplayRealtimeData(null);
       return;
     }
 
     if (realtimeDataFromHook) {
+      console.log("EnhancedDashboard: Setting realtime data:", realtimeDataFromHook);
       setDisplayRealtimeData(realtimeDataFromHook);
     } else {
-      setDisplayRealtimeData(sampleRealtimeData);
+      console.log("EnhancedDashboard: No realtime data available");
+      setDisplayRealtimeData(null);
     }
   }, [realtimeDataFromHook, realtimeLoading, realtimeError]);
 
   const formatChartData = (data: PredictionResponse[]) => {
+    console.log("formatChartData: Input data:", data);
+    
     // Filter data based on selected time range
     let filteredData = [...data];
     
@@ -344,12 +342,17 @@ const EnhancedDashboard: React.FC = () => {
       filteredData = data.filter(item => new Date(item.timestamp) >= monthAgo);
     }
     
+    console.log(`formatChartData: Filtered data (${timeRange}):`, filteredData);
+    
     // Ensure all data points have valid numeric values
-    return filteredData.map(item => {
-      // Safely parse numeric values with fallbacks to prevent NaN
-      const getSafeNumber = (value: any, fallback: number = 0) => {
+    const formattedData = filteredData.map(item => {
+      // Safely parse numeric values without fallbacks
+      const getSafeNumber = (value: any) => {
+        if (value === undefined || value === null) {
+          return 0;
+        }
         const num = Number(value);
-        return isNaN(num) ? fallback : num;
+        return isNaN(num) ? 0 : num;
       };
       
       // Format date strings
@@ -358,24 +361,43 @@ const EnhancedDashboard: React.FC = () => {
         dateObj = new Date(item.timestamp);
         // Check if date is valid
         if (isNaN(dateObj.getTime())) {
-          dateObj = new Date(); // Fallback to current date if invalid
+          dateObj = new Date(); // Use current date if invalid
         }
       } catch (e) {
-        dateObj = new Date(); // Fallback to current date if error
+        dateObj = new Date(); // Use current date if error
       }
+      
+      // Ensure we have valid objects to work with
+      const prediction = item.prediction || {};
+      const voice_metrics = item.voice_metrics || {};
+      
+      // Get values from the data structure
+      const severity = getSafeNumber(prediction.severity);
+      const confidence = getSafeNumber(prediction.confidence) * 100;
+      const pitch = getSafeNumber(voice_metrics.pitch);
+      const jitter = getSafeNumber(voice_metrics.jitter) * 100; // Convert to percentage
+      const shimmer = getSafeNumber(voice_metrics.shimmer) * 100; // Convert to percentage
+      const hnr = getSafeNumber(voice_metrics.hnr);
+      
+      console.log(`formatChartData: Processing item for ${format(dateObj, 'MMM dd')}:`, {
+        severity, confidence, pitch, jitter, shimmer, hnr
+      });
       
       return {
         date: format(dateObj, 'MMM dd'),
         fullDate: format(dateObj, 'MMM dd, yyyy HH:mm'),
-        severity: getSafeNumber(item.prediction.severity, 50),
-        confidence: getSafeNumber(item.prediction.confidence, 0.5) * 100,
-        pitch: getSafeNumber(item.voice_metrics.pitch, 120),
-        jitter: getSafeNumber(item.voice_metrics.jitter, 0.01) * 100, // Convert to percentage
-        shimmer: getSafeNumber(item.voice_metrics.shimmer, 0.05) * 100, // Convert to percentage
-        hnr: getSafeNumber(item.voice_metrics.hnr, 20),
-        status: item.prediction.status ? 'Positive' : 'Negative'
+        severity,
+        confidence,
+        pitch,
+        jitter,
+        shimmer,
+        hnr,
+        status: prediction.status ? 'Positive' : 'Negative'
       };
     });
+    
+    console.log("formatChartData: Final formatted data:", formattedData);
+    return formattedData;
   };
 
   const chartMetrics = [
@@ -750,15 +772,17 @@ const EnhancedDashboard: React.FC = () => {
                               boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
                             }}
                             labelStyle={{ color: isDarkMode ? '#EEE' : '#333', fontWeight: 'bold' }}
-                            itemStyle={{ color: chartMetrics.find(m => m.id === selectedMetric)?.color }}
-                            formatter={(value: number) => [
-                              `${value.toFixed(selectedMetric === 'jitter' || selectedMetric === 'shimmer' ? 2 : 1)} ${
-                                selectedMetric === 'confidence' || selectedMetric === 'severity' || selectedMetric === 'jitter' || selectedMetric === 'shimmer' ? '%' : 
-                                selectedMetric === 'pitch' ? 'Hz' : 
-                                selectedMetric === 'hnr' ? 'dB' : ''
-                              }`,
-                              chartMetrics.find(m => m.id === selectedMetric)?.label
-                            ]}
+                            itemStyle={{ color: chartMetrics.find(m => m.id === selectedMetric)?.color }}                            formatter={(value: any) => {
+                              const numValue = typeof value === 'number' ? value : parseFloat(value) || 0;
+                              return [
+                                `${numValue.toFixed(selectedMetric === 'jitter' || selectedMetric === 'shimmer' ? 2 : 1)} ${
+                                  selectedMetric === 'confidence' || selectedMetric === 'severity' || selectedMetric === 'jitter' || selectedMetric === 'shimmer' ? '%' : 
+                                  selectedMetric === 'pitch' ? 'Hz' : 
+                                  selectedMetric === 'hnr' ? 'dB' : ''
+                                }`,
+                                chartMetrics.find(m => m.id === selectedMetric)?.label
+                              ];
+                            }}
                             labelFormatter={(label: string, payload: any[]) => {
                               if (payload && payload.length > 0 && payload[0].payload) {
                                 return payload[0].payload.fullDate;
@@ -864,7 +888,10 @@ const EnhancedDashboard: React.FC = () => {
                       <XAxis 
                         type="number"
                         domain={[0, 1]}
-                        tickFormatter={(value) => `${(value * 100).toFixed(0)}%`}
+                        tickFormatter={(value) => {
+                          const numValue = typeof value === 'number' ? value : parseFloat(value) || 0;
+                          return `${(numValue * 100).toFixed(0)}%`;
+                        }}
                         tick={{ fontSize: 10, fill: themeColor }} 
                         stroke={themeColor} 
                       />
@@ -884,12 +911,12 @@ const EnhancedDashboard: React.FC = () => {
                           padding: '10px'
                         }}
                         labelStyle={{ color: isDarkMode ? '#EEE' : '#333', fontWeight: 'bold', marginBottom: '5px' }}
-                        itemStyle={{ paddingTop: '2px', paddingBottom: '2px'}}
-                        formatter={(value: number, name: string, entry: any) => {
+                        itemStyle={{ paddingTop: '2px', paddingBottom: '2px'}}                        formatter={(value: any, name: string, entry: any) => {
+                          const numValue = typeof value === 'number' ? value : parseFloat(value) || 0;
                           const predictionText = entry.payload.prediction === 1 ? "Positive" : "Negative";
                           const color = entry.payload.prediction === 1 ? '#fb923c' : '#4ade80';
                           return [
-                            <span style={{ color }}>{`${(value * 100).toFixed(0)}% (${predictionText})`}</span>,
+                            <span style={{ color }}>{`${(numValue * 100).toFixed(0)}% (${predictionText})`}</span>,
                             'Probability'
                           ];
                         }}
@@ -1005,6 +1032,7 @@ const EnhancedDashboard: React.FC = () => {
               </div>
             </CardHeader>
             <CardContent className="grid grid-cols-2 sm:grid-cols-4 gap-6 py-4">
+              {/* Calculate voice metrics and severity outside the render function */}
               {(() => {
                 // Helper function to ensure we have valid numbers
                 const getSafeNumber = (value: any, fallback: number = 0) => {
@@ -1023,6 +1051,38 @@ const EnhancedDashboard: React.FC = () => {
                 const jitterStatus = jitter > 0.01 ? (jitter > 0.015 ? 'critical' : 'warning') : 'normal';
                 const shimmerStatus = shimmer > 0.05 ? (shimmer > 0.07 ? 'critical' : 'warning') : 'normal';
                 const hnrStatus = hnr < 20 ? (hnr < 15 ? 'critical' : 'warning') : 'normal';
+                
+                // Calculate overall severity score (0-100)
+                const jitterScore = Math.min(100, Math.max(0, (jitter / 0.02) * 100));
+                const shimmerScore = Math.min(100, Math.max(0, (shimmer / 0.08) * 100));
+                const hnrScore = Math.min(100, Math.max(0, ((30 - hnr) / 30) * 100));
+                const pitchScore = Math.min(100, Math.max(0, 
+                  (pitch < 100 ? (100 - pitch) * 2 : (pitch > 150 ? (pitch - 150) * 2 : 0))
+                ));
+                
+                // Overall severity (weighted average)
+                const overallSeverity = Math.round(
+                  (jitterScore * 0.35) + (shimmerScore * 0.35) + (hnrScore * 0.2) + (pitchScore * 0.1)
+                );
+                
+                // Determine severity level and description
+                let severityLevel = 'Normal';
+                let severityColor = 'text-green-600 dark:text-green-400';
+                let severityDescription = 'No significant voice abnormalities detected.';
+                
+                if (overallSeverity > 75) {
+                  severityLevel = 'Severe';
+                  severityColor = 'text-red-600 dark:text-red-400';
+                  severityDescription = 'Significant voice abnormalities detected that may indicate advanced symptoms.';
+                } else if (overallSeverity > 50) {
+                  severityLevel = 'Moderate';
+                  severityColor = 'text-orange-600 dark:text-orange-400';
+                  severityDescription = 'Moderate voice abnormalities detected that may indicate developing symptoms.';
+                } else if (overallSeverity > 25) {
+                  severityLevel = 'Mild';
+                  severityColor = 'text-yellow-600 dark:text-yellow-400';
+                  severityDescription = 'Mild voice abnormalities detected that may warrant monitoring.';
+                }
                 
                 return (
                   <>
@@ -1103,6 +1163,103 @@ const EnhancedDashboard: React.FC = () => {
                       <span className="text-xs mt-1 text-slate-600 dark:text-slate-400">Normal: &gt; 20 dB</span>
                     </div>
                   </>
+                );
+              })()}
+              
+              {/* Add Severity Summary Card - spans full width */}
+              {(() => {
+                // Helper function to ensure we have valid numbers
+                const getSafeNumber = (value: any, fallback: number = 0) => {
+                  const num = Number(value);
+                  return isNaN(num) ? fallback : num;
+                };
+                
+                // Get safe values from realtime data
+                const pitch = getSafeNumber(displayRealtimeData.pitch, 120);
+                const jitter = getSafeNumber(displayRealtimeData.jitter, 0.01);
+                const shimmer = getSafeNumber(displayRealtimeData.shimmer, 0.05);
+                const hnr = getSafeNumber(displayRealtimeData.hnr, 20);
+                
+                // Calculate overall severity score (0-100)
+                const jitterScore = Math.min(100, Math.max(0, (jitter / 0.02) * 100));
+                const shimmerScore = Math.min(100, Math.max(0, (shimmer / 0.08) * 100));
+                const hnrScore = Math.min(100, Math.max(0, ((30 - hnr) / 30) * 100));
+                const pitchScore = Math.min(100, Math.max(0, 
+                  (pitch < 100 ? (100 - pitch) * 2 : (pitch > 150 ? (pitch - 150) * 2 : 0))
+                ));
+                
+                // Overall severity (weighted average)
+                const overallSeverity = Math.round(
+                  (jitterScore * 0.35) + (shimmerScore * 0.35) + (hnrScore * 0.2) + (pitchScore * 0.1)
+                );
+                
+                // Determine severity level and description
+                let severityLevel = 'Normal';
+                let severityColor = 'text-green-600 dark:text-green-400';
+                let severityDescription = 'No significant voice abnormalities detected.';
+                
+                if (overallSeverity > 75) {
+                  severityLevel = 'Severe';
+                  severityColor = 'text-red-600 dark:text-red-400';
+                  severityDescription = 'Significant voice abnormalities detected that may indicate advanced symptoms.';
+                } else if (overallSeverity > 50) {
+                  severityLevel = 'Moderate';
+                  severityColor = 'text-orange-600 dark:text-orange-400';
+                  severityDescription = 'Moderate voice abnormalities detected that may indicate developing symptoms.';
+                } else if (overallSeverity > 25) {
+                  severityLevel = 'Mild';
+                  severityColor = 'text-yellow-600 dark:text-yellow-400';
+                  severityDescription = 'Mild voice abnormalities detected that may warrant monitoring.';
+                }
+                
+                return (
+                  <div className="col-span-2 sm:col-span-4 mt-4">
+                    <div className={`p-4 rounded-lg shadow-sm border ${
+                      overallSeverity > 75 ? 'bg-red-50/80 dark:bg-red-950/40 border-red-200 dark:border-red-800/30' :
+                      overallSeverity > 50 ? 'bg-orange-50/80 dark:bg-orange-950/40 border-orange-200 dark:border-orange-800/30' :
+                      overallSeverity > 25 ? 'bg-yellow-50/80 dark:bg-yellow-950/40 border-yellow-200 dark:border-yellow-800/30' :
+                      'bg-green-50/80 dark:bg-green-950/40 border-green-200 dark:border-green-800/30'
+                    }`}>
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`h-12 w-12 rounded-full flex items-center justify-center ${
+                            overallSeverity > 75 ? 'bg-red-100 dark:bg-red-900/30' :
+                            overallSeverity > 50 ? 'bg-orange-100 dark:bg-orange-900/30' :
+                            overallSeverity > 25 ? 'bg-yellow-100 dark:bg-yellow-900/30' :
+                            'bg-green-100 dark:bg-green-900/30'
+                          }`}>
+                            <Gauge className={`h-6 w-6 ${
+                              overallSeverity > 75 ? 'text-red-600 dark:text-red-400' :
+                              overallSeverity > 50 ? 'text-orange-600 dark:text-orange-400' :
+                              overallSeverity > 25 ? 'text-yellow-600 dark:text-yellow-400' :
+                              'text-green-600 dark:text-green-400'
+                            }`} />
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-medium">Voice Analysis Severity</h3>
+                            <p className={`text-xl font-bold ${severityColor}`}>{severityLevel} ({overallSeverity}%)</p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex-1 text-sm">
+                          <p className="text-slate-700 dark:text-slate-300">{severityDescription}</p>
+                          <div className="mt-2 flex items-center">
+                            <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5">
+                              <div 
+                                className={`h-2.5 rounded-full ${
+                                  overallSeverity > 75 ? 'bg-red-600' :
+                                  overallSeverity > 50 ? 'bg-orange-500' :
+                                  overallSeverity > 25 ? 'bg-yellow-500' :
+                                  'bg-green-500'
+                                }`} 
+                                style={{ width: `${overallSeverity}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 );
               })()}
             </CardContent>

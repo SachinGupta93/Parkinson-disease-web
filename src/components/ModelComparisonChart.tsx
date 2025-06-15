@@ -1,13 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState } from 'react';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  Legend, 
+import React, { useState, useEffect } from 'react';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
   ResponsiveContainer,
   RadarChart,
   PolarGrid,
@@ -22,6 +22,7 @@ import {
 } from 'recharts';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { UserContext } from '@/App';
 import { MultiModelPredictionResponse, ModelPrediction } from '@/services/api';
 
@@ -53,14 +54,15 @@ const DUMMY_MODEL_RESULTS: ModelResult[] = [
   { modelName: 'xgboost', riskScore: 82, probability: 0.85, confidence: 0.80 },
   { modelName: 'randomForest', riskScore: 76, probability: 0.79, confidence: 0.83 },
   { modelName: 'neuralNetwork', riskScore: 74, probability: 0.77, confidence: 0.78 },
-  
 ];
 
 const formatModelName = (name: string): string => {
-  switch(name) {
+  switch (name) {
     case 'xgboost': return 'XGBoost';
     case 'randomForest': return 'Random Forest';
+    case 'random_forest': return 'Random Forest';
     case 'neuralNetwork': return 'Neural Network';
+    case 'neural_network': return 'Neural Network';
     case 'svm': return 'SVM';
     case 'gradient_boosting': return 'Gradient Boosting';
     case 'adaboost': return 'AdaBoost';
@@ -75,85 +77,182 @@ const ModelComparisonChart: React.FC<ModelComparisonChartProps> = ({ modelResult
   const [dataType, setDataType] = useState<'all' | 'riskScore' | 'probability' | 'confidence'>('all');
   const { theme } = React.useContext(UserContext);
   const isDarkMode = theme === 'dark';
-
-  let sourceData: ModelResult[] = [];
+  const [processedData, setProcessedData] = useState<any[]>([]);
+  const [hasValidData, setHasValidData] = useState(false);
   
-  console.log('ModelComparisonChart - Input props:', { modelResults, multiModelResults });
+  // Only log props in development mode if there's an issue
+  if (process.env.NODE_ENV === 'development' && !modelResults && !multiModelResults) {
+    console.log("ModelComparisonChart - Warning: No model data provided", { modelResults, multiModelResults });
+  }
 
-  // Process multiModelResults if provided
-  if (multiModelResults && multiModelResults.chart_data) {
-    console.log('ModelComparisonChart - Using multiModelResults');
-    // Convert the MultiModelPredictionResponse to ModelResult format
-    const modelNames = multiModelResults.loaded_models || [];
-    sourceData = modelNames.map((modelName, index) => {
-      const modelData = multiModelResults[modelName as keyof MultiModelPredictionResponse] as ModelPrediction | undefined;
+  // Initialize with dummy data
+  useEffect(() => {
+    // Always start with dummy data
+    const dummyData = DUMMY_MODEL_RESULTS.map((result, index) => ({
+      model: formatModelName(result.modelName),
+      riskScore: result.riskScore,
+      probability: Math.round(result.probability * 100),
+      confidence: Math.round(result.confidence * 100),
+      color: MODEL_COLORS[index % MODEL_COLORS.length],
+    }));
+    setProcessedData(dummyData);
+    setHasValidData(false); // Mark as dummy data
+  }, []);
+
+  // Process the data when props change
+  useEffect(() => {
+    // If no data is provided, keep using the dummy data
+    if (!modelResults && !multiModelResults) {
+      return;
+    }
+    
+    let sourceData: ModelResult[] = [];
+
+    // First priority: use modelResults if provided
+    if (modelResults && modelResults.length > 0) {
+      sourceData = modelResults.map(result => {
+        return {
+          modelName: result.modelName || 'unknown',
+          riskScore: typeof result.riskScore === 'number' ? result.riskScore : 0,
+          probability: typeof result.probability === 'number' ? result.probability : 0,
+          confidence: typeof result.confidence === 'number' ? result.confidence : 0
+        };
+      });
+    }
+    // Second priority: process multiModelResults if provided and no modelResults
+    else if (multiModelResults) {
       
-      if (!modelData) return null;
-      
-      // Calculate risk score based on probability (0-100 scale)
-      const riskScore = Math.round(modelData.probability * 100);
+      // Check if we have a nested models object
+      if (multiModelResults.models && Object.keys(multiModelResults.models).length > 0) {
+        // Convert the nested models structure to ModelResult format
+        const modelEntries = Object.entries(multiModelResults.models);
+        
+        sourceData = modelEntries
+          .filter(([_, modelData]) => modelData !== null) // Filter out null models
+          .map(([modelName, modelData]) => {
+            if (!modelData) return null;
+            
+            // Ensure we have valid numeric values
+            const probability = typeof modelData.probability === 'number' ? modelData.probability : 0;
+            const riskScore = typeof modelData.risk_score === 'number' ? modelData.risk_score : Math.round(probability * 100);
+            const confidence = typeof modelData.confidence === 'number' ? modelData.confidence : (probability > 0.5 ? probability : 1 - probability);
+            
+            return {
+              modelName,
+              riskScore,
+              probability,
+              confidence
+            };
+          })
+          .filter(Boolean) as ModelResult[];
+      } else {
+        // Handle direct model properties at root level
+        const modelEntries = Object.entries(multiModelResults)
+          .filter(([key, value]) =>
+            // Filter out non-model properties and null values
+            typeof value === 'object' &&
+            value !== null &&
+            !['models', 'model_details', 'feature_importance', 'summary', 'timestamp', 'features_used', 'loaded_models', 'chart_data'].includes(key)
+          );
+        
+        sourceData = modelEntries
+          .map(([modelName, modelData]) => {
+            if (!modelData) return null;
+
+            // Ensure we have valid numeric values
+            const probability = typeof modelData.probability === 'number' ? modelData.probability : 0;
+            const riskScore = typeof modelData.risk_score === 'number' ? modelData.risk_score : Math.round(probability * 100);
+            const confidence = typeof modelData.confidence === 'number' ? modelData.confidence : (probability > 0.5 ? probability : 1 - probability);
+
+            return {
+              modelName,
+              riskScore,
+              probability,
+              confidence
+            };
+          })
+          .filter(Boolean) as ModelResult[];
+      }
+    }
+    // Use dummy data if nothing else is available
+    else {
+      sourceData = DUMMY_MODEL_RESULTS;
+    }
+
+    // Transform the source data into chart-ready format
+    if (sourceData.length === 0) {
+      sourceData = DUMMY_MODEL_RESULTS;
+    }
+    
+    const chartData = sourceData.map((result, index) => {
+      const formattedModel = formatModelName(result.modelName);
+      const riskScoreValue = typeof result.riskScore === 'number' ? result.riskScore : 0;
+      const probabilityValue = typeof result.probability === 'number' ? Math.round(result.probability * 100) : 0;
+      const confidenceValue = typeof result.confidence === 'number' ? Math.round(result.confidence * 100) : 0;
       
       return {
-        modelName,
-        riskScore,
-        probability: modelData.probability,
-        confidence: 0.8 // Default confidence if not available
+        model: formattedModel,
+        riskScore: riskScoreValue,
+        probability: probabilityValue,
+        confidence: confidenceValue,
+        color: MODEL_COLORS[index % MODEL_COLORS.length],
       };
-    }).filter(Boolean) as ModelResult[];
-    console.log('ModelComparisonChart - Processed multiModelResults:', sourceData);
-  }
-  // Fall back to provided modelResults if available
-  else if (Array.isArray(modelResults) && modelResults.length > 0) {
-    console.log('ModelComparisonChart - Using modelResults');
-    const validItems = modelResults.filter(item => 
-      typeof item === 'object' && item !== null &&
-      typeof item.modelName === 'string' &&
-      (typeof item.riskScore === 'number' && !isNaN(item.riskScore)) &&
-      (typeof item.probability === 'number' && !isNaN(item.probability)) &&
+    });
+
+    // Check if we have any valid data points - allow 0 values as they might be valid
+    const hasData = chartData.some(item =>
+      (typeof item.riskScore === 'number' && !isNaN(item.riskScore)) ||
+      (typeof item.probability === 'number' && !isNaN(item.probability)) ||
       (typeof item.confidence === 'number' && !isNaN(item.confidence))
     );
-    if (validItems.length > 0) {
-      sourceData = validItems;
-      console.log('ModelComparisonChart - Valid modelResults:', sourceData);
-    } else {
-      console.log('ModelComparisonChart - No valid items in modelResults');
-    }
-  }
-  // Use dummy data if nothing else is available
-  else {
-    console.log('ModelComparisonChart - Using dummy data');
-    sourceData = DUMMY_MODEL_RESULTS;
-  }
+
+    setHasValidData(hasData);
     
-  const chartData = sourceData.map((result, index) => ({
-    model: formatModelName(result.modelName),
-    riskScore: result.riskScore,
-    probability: Math.round(result.probability * 100),
-    confidence: Math.round(result.confidence * 100),
-    color: MODEL_COLORS[index % MODEL_COLORS.length],
-  }));
-  
-  console.log('ModelComparisonChart - Formatted chart data:', chartData);
-  
-  const filteredChartData = dataType === 'all' 
-    ? chartData 
-    : chartData.map(item => ({
-        model: item.model, 
-        [dataType]: item[dataType as keyof Omit<typeof item, 'model' | 'color'>],
-        color: item.color
+    if (chartData.length > 0) {
+      setProcessedData(chartData);
+    } else {
+      // If no data, use dummy data
+      const dummyData = DUMMY_MODEL_RESULTS.map((result, index) => ({
+        model: formatModelName(result.modelName),
+        riskScore: result.riskScore,
+        probability: Math.round(result.probability * 100),
+        confidence: Math.round(result.confidence * 100),
+        color: MODEL_COLORS[index % MODEL_COLORS.length],
       }));
-  
+      setProcessedData(dummyData);
+    }
+  }, [modelResults, multiModelResults]);
+
+  // Filter the data based on the selected data type
+  const filteredChartData = dataType === 'all'
+    ? processedData
+    : processedData.map(item => ({
+      model: item.model,
+      [dataType]: item[dataType as keyof Omit<typeof item, 'model' | 'color'>],
+      color: item.color
+    }));
+
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-background/95 border border-border p-3 rounded-md shadow-lg backdrop-blur-sm">
           <p className="font-semibold text-sm mb-1">{label}</p>
-          {payload.map((entry: any, index: number) => (
-            <p key={`item-${index}`} className="text-xs" style={{ color: entry.color || entry.payload?.fill || (isDarkMode ? '#F3F4F6' : '#374151') }}>
-              {entry.name}: <span className="font-mono font-medium">{entry.value}</span>
-              {(entry.name?.includes("Probability") || entry.name?.includes("Confidence")) && "%"}
-            </p>
-          ))}
+          {payload.map((entry: any, index: number) => {
+            // Safely format the value
+            const value = entry.value;
+            const formattedValue = typeof value === 'number'
+              ? value.toFixed(2)
+              : typeof value === 'string' && !isNaN(parseFloat(value))
+                ? parseFloat(value).toFixed(2)
+                : value;
+
+            return (
+              <p key={`item-${index}`} className="text-xs" style={{ color: entry.color || entry.payload?.fill || (isDarkMode ? '#F3F4F6' : '#374151') }}>
+                {entry.name}: <span className="font-mono font-medium">{formattedValue}</span>
+                {(entry.name?.includes("Probability") || entry.name?.includes("Confidence")) && "%"}
+              </p>
+            );
+          })}
         </div>
       );
     }
@@ -161,208 +260,195 @@ const ModelComparisonChart: React.FC<ModelComparisonChartProps> = ({ modelResult
   };
 
   return (
-    <div className="h-full flex flex-col space-y-3 p-1">
-      <div className="flex flex-col space-y-2">
-        <div className="text-sm text-muted-foreground">
-          <h3 className="text-base font-medium text-foreground mb-1">Model Comparison Chart</h3>
-          <p className="mb-1"><span className="font-semibold">Purpose:</span> This chart compares how different machine learning models evaluate your Parkinson's risk based on the same input data.</p>
-          <p className="mb-1"><span className="font-semibold">What it shows:</span> Each model's risk assessment is displayed with three key metrics:</p>
-          <ul className="list-disc list-inside ml-2 mb-1">
-            <li><span className="font-semibold">Risk Score (0-100):</span> Overall risk level calculated by the model</li>
-            <li><span className="font-semibold">Probability (%):</span> Statistical likelihood of Parkinson's</li>
-            <li><span className="font-semibold">Confidence (%):</span> How certain the model is about its prediction</li>
-          </ul>
-          <p><span className="font-semibold">Technical note:</span> The Ensemble model combines results from multiple algorithms for improved accuracy.</p>
-        </div>
-      </div>
-
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-        <Tabs value={chartType} onValueChange={(value) => setChartType(value as any)}>
-          <TabsList className="grid grid-cols-2 sm:grid-cols-4 w-full sm:w-fit gap-1">
-            <TabsTrigger value="bar" className="px-2 py-1 text-xs sm:text-sm sm:px-3">Bar</TabsTrigger>
-            <TabsTrigger value="radar" className="px-2 py-1 text-xs sm:text-sm sm:px-3">Radar</TabsTrigger>
-            <TabsTrigger value="line" className="px-2 py-1 text-xs sm:text-sm sm:px-3">Line</TabsTrigger>
-            <TabsTrigger value="pie" className="px-2 py-1 text-xs sm:text-sm sm:px-3">Pie</TabsTrigger>
-          </TabsList>
-        </Tabs>
-        
-        <div className="w-full sm:w-[180px]">
-          <Select value={dataType} onValueChange={(value) => setDataType(value as any)}>
-            <SelectTrigger className="h-9 text-xs sm:text-sm w-full">
-              <SelectValue placeholder="Select Metric" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Metrics</SelectItem>
-              <SelectItem value="riskScore">Risk Score</SelectItem>
-              <SelectItem value="probability">Probability</SelectItem>
-              <SelectItem value="confidence">Confidence</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div className="flex-1 min-h-[300px] sm:min-h-[350px] bg-card/80 dark:bg-black/20 rounded-lg p-2 shadow-sm">
-        <ResponsiveContainer width="100%" height="100%">
-          {chartType === 'bar' ? (
-            <BarChart 
-              data={filteredChartData} 
-              margin={{ top: 5, right: 10, left: -10, bottom: 60 }} 
-              barGap={dataType === 'all' ? 2 : 4}
-              barCategoryGap={dataType === 'all' ? '10%' : '20%'}
-              maxBarSize={dataType === 'all' ? 25 : 40}
+    <Card className="overflow-hidden border-0 shadow-md hover:shadow-lg transition-all duration-300 h-full">
+      <CardHeader className="p-3 border-b">
+        <CardTitle className="text-lg flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+            <polyline points="9 22 9 12 15 12 15 22"></polyline>
+          </svg>
+          Model Comparison Visualization
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Interactive visualization of model predictions
+        </p>
+      </CardHeader>
+      <CardContent className="p-3">
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-gray-950 p-3 rounded-lg border shadow-sm">
+            <div className="flex items-start gap-3">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M12 16v-4"></path>
+                <path d="M12 8h.01"></path>
+              </svg>
+              <div className="flex-1">
+                <h4 className="text-sm font-medium mb-1">Data Source</h4>
+                <p className="text-xs text-muted-foreground">
+                  {hasValidData 
+                    ? "Showing real prediction data from models"
+                    : "Showing sample data - submit voice or clinical data for real predictions"}
+                </p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex flex-col sm:flex-row gap-3 justify-between">
+            <Tabs 
+              defaultValue="bar" 
+              value={chartType}
+              onValueChange={(value) => setChartType(value as any)}
+              className="w-full sm:w-auto"
             >
-              <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.2} />
-              <XAxis 
-                dataKey="model" 
-                tick={{ fill: isDarkMode ? '#E5E7EB' : '#4B5563', fontSize: 9 }} 
-                axisLine={{ stroke: isDarkMode ? '#4B5563' : '#D1D5DB', opacity: 0.5 }} 
-                height={60} 
-                interval={0}
-                angle={-45}
-                textAnchor="end"
-              />
-              <YAxis 
-                tick={{ fill: isDarkMode ? '#E5E7EB' : '#4B5563', fontSize: 9 }} 
-                axisLine={{ stroke: isDarkMode ? '#4B5563' : '#D1D5DB', opacity: 0.5 }}
-                domain={[0, dataType === 'riskScore' ? 100 : (dataType === 'all' ? 'auto' : 100)]}
-                allowDataOverflow={false}
-              />
-              <Tooltip content={<CustomTooltip />} cursor={{ fill: 'hsl(var(--muted) / 0.3)' }}/>
-              <Legend 
-                wrapperStyle={{ paddingTop: 10, paddingBottom: 0, fontSize: '10px' }} 
-                formatter={(value) => <span style={{ color: isDarkMode ? '#F3F4F6' : '#374151' }} className="text-xs">{value}</span>} 
-              />
-              {(dataType === 'all' || dataType === 'riskScore') && <Bar dataKey="riskScore" name="Risk Score" fill={MODEL_COLORS[0]} radius={[4, 4, 0, 0]} />}
-              {(dataType === 'all' || dataType === 'probability') && <Bar dataKey="probability" name="Probability (%)" fill={MODEL_COLORS[1]} radius={[4, 4, 0, 0]} />}
-              {(dataType === 'all' || dataType === 'confidence') && <Bar dataKey="confidence" name="Confidence (%)" fill={MODEL_COLORS[2]} radius={[4, 4, 0, 0]} />}
-            </BarChart>
-          ) : chartType === 'radar' ? (
-            <RadarChart 
-              outerRadius="75%" 
-              data={chartData} // Radar chart typically shows all metrics for each model
-              margin={{ top: 20, right: 20, bottom: 20, left: 20 }}
+              <TabsList className="grid grid-cols-4 w-full">
+                <TabsTrigger value="bar" className="text-xs">Bar</TabsTrigger>
+                <TabsTrigger value="radar" className="text-xs">Radar</TabsTrigger>
+                <TabsTrigger value="line" className="text-xs">Line</TabsTrigger>
+                <TabsTrigger value="pie" className="text-xs">Pie</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            
+            <Select 
+              value={dataType} 
+              onValueChange={(value) => setDataType(value as any)}
             >
-              <PolarGrid stroke="var(--border)" strokeOpacity={0.3} />
-              <PolarAngleAxis 
-                dataKey="model" 
-                tick={{ fill: isDarkMode ? '#E5E7EB' : '#4B5563', fontSize: 10 }}
-              />
-              <PolarRadiusAxis 
-                angle={30} 
-                domain={[0, 100]} 
-                tick={{ fill: isDarkMode ? '#E5E7EB' : '#4B5563', fontSize: 9 }} 
-                axisLine={false}
-                tickCount={6}
-              />
-              <Radar name="Risk Score" dataKey="riskScore" stroke={MODEL_COLORS[0]} fill={MODEL_COLORS[0]} fillOpacity={0.5} />
-              <Radar name="Probability (%)" dataKey="probability" stroke={MODEL_COLORS[1]} fill={MODEL_COLORS[1]} fillOpacity={0.5} />
-              <Radar name="Confidence (%)" dataKey="confidence" stroke={MODEL_COLORS[2]} fill={MODEL_COLORS[2]} fillOpacity={0.5} />
-              <Legend wrapperStyle={{ paddingTop: 10, fontSize: '10px' }} formatter={(value) => <span style={{ color: isDarkMode ? '#F3F4F6' : '#374151' }} className="text-xs">{value}</span>} />
-              <Tooltip content={<CustomTooltip />} />
-            </RadarChart>
-          ) : chartType === 'line' ? (
-            <LineChart data={filteredChartData} margin={{ top: 5, right: 10, left: -10, bottom: 60 }}>
-              <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.2} />
-              <XAxis 
-                dataKey="model" 
-                tick={{ fill: isDarkMode ? '#E5E7EB' : '#4B5563', fontSize: 9 }} 
-                axisLine={{ stroke: isDarkMode ? '#4B5563' : '#D1D5DB', opacity: 0.5 }}
-                angle={-45}
-                textAnchor="end"
-                height={60} 
-                interval={0}
-              />
-              <YAxis 
-                tick={{ fill: isDarkMode ? '#E5E7EB' : '#4B5563', fontSize: 9 }} 
-                axisLine={{ stroke: isDarkMode ? '#4B5563' : '#D1D5DB', opacity: 0.5 }} 
-                domain={[0, 100]} 
-              />
-              <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'hsl(var(--muted))', strokeWidth: 1 }}/>
-              <Legend wrapperStyle={{ paddingTop: 10, fontSize: '10px' }} formatter={(value) => <span style={{ color: isDarkMode ? '#F3F4F6' : '#374151' }} className="text-xs">{value}</span>} />
-              {(dataType === 'all' || dataType === 'riskScore') && <Line type="monotone" dataKey="riskScore" name="Risk Score" stroke={MODEL_COLORS[0]} strokeWidth={2} dot={{ r: 3, fill: MODEL_COLORS[0] }} activeDot={{ r: 6, strokeWidth: 2, stroke: MODEL_COLORS[0] }} />}
-              {(dataType === 'all' || dataType === 'probability') && <Line type="monotone" dataKey="probability" name="Probability (%)" stroke={MODEL_COLORS[1]} strokeWidth={2} dot={{ r: 3, fill: MODEL_COLORS[1] }} activeDot={{ r: 6, strokeWidth: 2, stroke: MODEL_COLORS[1] }} />}
-              {(dataType === 'all' || dataType === 'confidence') && <Line type="monotone" dataKey="confidence" name="Confidence (%)" stroke={MODEL_COLORS[2]} strokeWidth={2} dot={{ r: 3, fill: MODEL_COLORS[2] }} activeDot={{ r: 6, strokeWidth: 2, stroke: MODEL_COLORS[2] }} />}
-            </LineChart>
-          ) : chartType === 'pie' ? (
-            <PieChart margin={{ top: 10, right: 10, bottom: 40, left: 10 }}>
-              <Tooltip content={<CustomTooltip />} />
-              <Legend 
-                verticalAlign="bottom" 
-                wrapperStyle={{ paddingTop: 10, fontSize: '10px' }} 
-                formatter={(value) => <span style={{ color: isDarkMode ? '#F3F4F6' : '#374151' }} className="text-xs">{value}</span>} 
-              />
-              <Pie 
-                data={filteredChartData.filter(d => {
-                  const keyForPieData = dataType === 'all' ? 'riskScore' : dataType as 'riskScore' | 'probability' | 'confidence';
-                  const value = d[keyForPieData];
-                  return typeof value === 'number' && value > 0;
-                })} 
-                dataKey={dataType === 'all' ? 'riskScore' : dataType as 'riskScore' | 'probability' | 'confidence'} 
-                nameKey="model" 
-                cx="50%" 
-                cy="45%" 
-                outerRadius="75%"
-                innerRadius="30%"
-                paddingAngle={1}
-                labelLine={false}
-                label={({ cx, cy, midAngle, innerRadius, outerRadius, percent, index, ...rest }: any) => {
-                  const keyForPieData = dataType === 'all' ? 'riskScore' : dataType as 'riskScore' | 'probability' | 'confidence';
-                  const dataForPieLabel = filteredChartData.filter(d => {
-                    const value = d[keyForPieData];
-                    return typeof value === 'number' && value > 0;
-                  });
-                  const entry = dataForPieLabel[index];
-                  if (!entry) return null;
-
-                  const RADIAN = Math.PI / 180;
-                  const radius = innerRadius + (outerRadius - innerRadius) * 0.55;
-                  const x = cx + radius * Math.cos(-midAngle * RADIAN);
-                  const y = cy + radius * Math.sin(-midAngle * RADIAN);
-                  
-                  return (
-                    <text
-                      x={x}
-                      y={y}
-                      fill={isDarkMode ? "#F9FAFB" : "#1F2937"}
-                      textAnchor={x > cx ? 'start' : 'end'}
-                      dominantBaseline="central"
-                      fontSize="10px"
-                      fontWeight="medium"
-                    >
-                      {`${(percent * 100).toFixed(0)}%`}
-                    </text>
-                  );
-                }}
-              >
-                {filteredChartData.filter(d => {
-                  const keyForPieData = dataType === 'all' ? 'riskScore' : dataType as 'riskScore' | 'probability' | 'confidence';
-                  const value = d[keyForPieData];
-                  return typeof value === 'number' && value > 0;
-                }).map((entry, idx) => (
-                  <Cell key={`cell-${idx}`} fill={entry.color || MODEL_COLORS[idx % MODEL_COLORS.length]} stroke={isDarkMode ? "var(--background)" : "var(--background)"} strokeWidth={1}/>
-                ))}
-              </Pie>
-            </PieChart>
-          ) : null}
-        </ResponsiveContainer>
-      </div>
-      
-      <div className="text-xs text-muted-foreground bg-card/80 dark:bg-black/20 p-2 rounded-lg shadow-sm">
-        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
-          <div className="flex items-center">
-            <div className="w-2.5 h-2.5 rounded-full mr-1" style={{backgroundColor: MODEL_COLORS[0]}}></div>
-            <span><span className="font-medium">Risk:</span> 0-100</span>
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder="Select data type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Metrics</SelectItem>
+                <SelectItem value="riskScore">Risk Score</SelectItem>
+                <SelectItem value="probability">Probability</SelectItem>
+                <SelectItem value="confidence">Confidence</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          <div className="flex items-center">
-            <div className="w-2.5 h-2.5 rounded-full mr-1" style={{backgroundColor: MODEL_COLORS[1]}}></div>
-            <span><span className="font-medium">Prob:</span> 0-100%</span>
-          </div>
-          <div className="flex items-center">
-            <div className="w-2.5 h-2.5 rounded-full mr-1" style={{backgroundColor: MODEL_COLORS[2]}}></div>
-            <span><span className="font-medium">Conf:</span> 0-100%</span>
+          
+          <div className="h-[300px] w-full">
+            {chartType === 'bar' && (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={filteredChartData}
+                  margin={{ top: 20, right: 30, left: 20, bottom: 70 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                  <XAxis 
+                    dataKey="model" 
+                    angle={-45} 
+                    textAnchor="end" 
+                    height={70} 
+                    tick={{ fontSize: 12 }}
+                  />
+                  <YAxis />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend />
+                  {dataType === 'all' ? (
+                    <>
+                      <Bar dataKey="riskScore" name="Risk Score" fill="#6366f1" />
+                      <Bar dataKey="probability" name="Probability %" fill="#3b82f6" />
+                      <Bar dataKey="confidence" name="Confidence %" fill="#a21caf" />
+                    </>
+                  ) : (
+                    <Bar 
+                      dataKey={dataType} 
+                      name={dataType === 'riskScore' ? 'Risk Score' : dataType === 'probability' ? 'Probability %' : 'Confidence %'} 
+                      fill={dataType === 'riskScore' ? '#6366f1' : dataType === 'probability' ? '#3b82f6' : '#a21caf'}
+                    />
+                  )}
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+            
+            {chartType === 'radar' && (
+              <ResponsiveContainer width="100%" height="100%">
+                <RadarChart outerRadius={90} data={filteredChartData}>
+                  <PolarGrid />
+                  <PolarAngleAxis dataKey="model" tick={{ fontSize: 12 }} />
+                  <PolarRadiusAxis />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend />
+                  {dataType === 'all' ? (
+                    <>
+                      <Radar name="Risk Score" dataKey="riskScore" stroke="#6366f1" fill="#6366f1" fillOpacity={0.6} />
+                      <Radar name="Probability %" dataKey="probability" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.6} />
+                      <Radar name="Confidence %" dataKey="confidence" stroke="#a21caf" fill="#a21caf" fillOpacity={0.6} />
+                    </>
+                  ) : (
+                    <Radar 
+                      name={dataType === 'riskScore' ? 'Risk Score' : dataType === 'probability' ? 'Probability %' : 'Confidence %'} 
+                      dataKey={dataType} 
+                      stroke={dataType === 'riskScore' ? '#6366f1' : dataType === 'probability' ? '#3b82f6' : '#a21caf'} 
+                      fill={dataType === 'riskScore' ? '#6366f1' : dataType === 'probability' ? '#3b82f6' : '#a21caf'} 
+                      fillOpacity={0.6} 
+                    />
+                  )}
+                </RadarChart>
+              </ResponsiveContainer>
+            )}
+            
+            {chartType === 'line' && (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={filteredChartData}
+                  margin={{ top: 20, right: 30, left: 20, bottom: 70 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                  <XAxis 
+                    dataKey="model" 
+                    angle={-45} 
+                    textAnchor="end" 
+                    height={70} 
+                    tick={{ fontSize: 12 }}
+                  />
+                  <YAxis />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend />
+                  {dataType === 'all' ? (
+                    <>
+                      <Line type="monotone" dataKey="riskScore" name="Risk Score" stroke="#6366f1" activeDot={{ r: 8 }} />
+                      <Line type="monotone" dataKey="probability" name="Probability %" stroke="#3b82f6" activeDot={{ r: 8 }} />
+                      <Line type="monotone" dataKey="confidence" name="Confidence %" stroke="#a21caf" activeDot={{ r: 8 }} />
+                    </>
+                  ) : (
+                    <Line 
+                      type="monotone" 
+                      dataKey={dataType} 
+                      name={dataType === 'riskScore' ? 'Risk Score' : dataType === 'probability' ? 'Probability %' : 'Confidence %'} 
+                      stroke={dataType === 'riskScore' ? '#6366f1' : dataType === 'probability' ? '#3b82f6' : '#a21caf'} 
+                      activeDot={{ r: 8 }} 
+                    />
+                  )}
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+            
+            {chartType === 'pie' && (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={filteredChartData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey={dataType === 'all' ? 'riskScore' : dataType}
+                    nameKey="model"
+                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                  >
+                    {filteredChartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 };
 

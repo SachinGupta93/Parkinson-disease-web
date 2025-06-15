@@ -1,10 +1,10 @@
-
 import React, { useState, useRef, useEffect } from "react";
+import { audioBufferToWav, validateWavFile } from "@/utils/audioUtils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
-import { apiService } from "@/services/api";
+import { apiService, CompleteVoiceData } from "@/services/api";
 import {
   Mic,
   Square,
@@ -12,44 +12,24 @@ import {
   Volume
 } from "lucide-react";
 
-// Helper function to generate mock voice data for testing/fallback
-const getMockVoiceData = () => {
-  return {
-    MDVP_Fo: 154.23 + (Math.random() * 10 - 5),
-    MDVP_Fhi: 197.10 + (Math.random() * 10 - 5),
-    MDVP_Flo: 116.82 + (Math.random() * 10 - 5),
-    MDVP_Jitter: 0.006 + (Math.random() * 0.002 - 0.001),
-    MDVP_Jitter_Abs: 0.00005 + (Math.random() * 0.00002 - 0.00001),
-    MDVP_RAP: 0.003 + (Math.random() * 0.001 - 0.0005),
-    MDVP_PPQ: 0.003 + (Math.random() * 0.001 - 0.0005),
-    Jitter_DDP: 0.009 + (Math.random() * 0.002 - 0.001),
-    MDVP_Shimmer: 0.04 + (Math.random() * 0.01 - 0.005),
-    MDVP_Shimmer_dB: 0.35 + (Math.random() * 0.1 - 0.05),
-    Shimmer_APQ3: 0.02 + (Math.random() * 0.005 - 0.0025),
-    Shimmer_APQ5: 0.025 + (Math.random() * 0.005 - 0.0025),
-    MDVP_APQ: 0.03 + (Math.random() * 0.005 - 0.0025),
-    Shimmer_DDA: 0.06 + (Math.random() * 0.01 - 0.005),
-    NHR: 0.02 + (Math.random() * 0.01 - 0.005),
-    HNR: 21.5 + (Math.random() * 3 - 1.5),
-    RPDE: 0.5 + (Math.random() * 0.1 - 0.05),
-    DFA: 0.7 + (Math.random() * 0.1 - 0.05),
-    spread1: -5.5 + (Math.random() * 1 - 0.5),
-    spread2: 0.2 + (Math.random() * 0.1 - 0.05),
-    D2: 2.3 + (Math.random() * 0.2 - 0.1),
-    PPE: 0.2 + (Math.random() * 0.05 - 0.025)
-  };
-};
+// Add WebKit AudioContext type definition
+declare global {
+  interface Window {
+    webkitAudioContext: typeof AudioContext;
+  }
+}
 
 interface EnhancedVoiceRecorderProps {
-  onVoiceAnalyzed: (voiceData: any) => void;
+  onVoiceAnalyzed: (voiceData: CompleteVoiceData) => void;
 }
 
 const EnhancedVoiceRecorder: React.FC<EnhancedVoiceRecorderProps> = ({ onVoiceAnalyzed }) => {
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [recordingTime, setRecordingTime] = useState<number>(0);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [isAnalysisError, setIsAnalysisError] = useState<boolean>(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [audioAnalysis, setAudioAnalysis] = useState<any>(null);
+  const [audioAnalysis, setAudioAnalysis] = useState<CompleteVoiceData | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [audioVolume, setAudioVolume] = useState<number[]>([]);
   
@@ -112,59 +92,175 @@ const EnhancedVoiceRecorder: React.FC<EnhancedVoiceRecorderProps> = ({ onVoiceAn
   
   const startRecording = async () => {
     try {
-      // Clear previous data
-      audioChunksRef.current = [];
-      setAudioUrl(null);
-      setAudioAnalysis(null);
-      setAudioVolume([]);
-      
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      
-      // Try to use audio/wav format if supported, fallback to audio/webm
-      let mimeType = 'audio/webm';
-      if (MediaRecorder.isTypeSupported('audio/wav')) {
-        mimeType = 'audio/wav';
-      } else if (MediaRecorder.isTypeSupported('audio/mp3')) {
-        mimeType = 'audio/mp3';
-      } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
-        mimeType = 'audio/ogg';
-      }
-      
-      console.log(`Using audio format: ${mimeType}`);
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
-      mediaRecorderRef.current = mediaRecorder;
-      
-      mediaRecorder.addEventListener("dataavailable", (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      });
-      
-      mediaRecorder.addEventListener("stop", handleRecordingStop);
-      
-      mediaRecorder.start();
-      setIsRecording(true);
-      
-      // Set up audio visualization
-      setupAudioVisualization(stream);
-      
-      // Start timer
-      let seconds = 0;
-      timerRef.current = window.setInterval(() => {
-        seconds += 1;
-        setRecordingTime(seconds);
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            audio: {
+                sampleRate: 44100,
+                channelCount: 1,
+                echoCancellation: true,
+                noiseSuppression: true
+            }
+        });
         
-        // Auto stop after 10 seconds
-        if (seconds >= 10) {
-          stopRecording();
+        // Set up audio visualization
+        setupAudioVisualization(stream);
+        
+        // Try to use WAV format first, fallback to WebM if not supported
+        let options: MediaRecorderOptions;
+        if (MediaRecorder.isTypeSupported('audio/wav')) {
+            options = { mimeType: 'audio/wav' };
+            console.log('Using audio format: audio/wav');
+        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+            options = { mimeType: 'audio/webm' };
+            console.log('Using audio format: audio/webm (will convert to WAV)');
+        } else {
+            // Fallback to default
+            options = {};
+            console.log('Using default audio format (will convert to WAV)');
         }
-      }, 1000);
-      
+        
+        mediaRecorderRef.current = new MediaRecorder(stream, options);
+        audioChunksRef.current = [];
+        
+        mediaRecorderRef.current.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                audioChunksRef.current.push(event.data);
+            }
+        };
+        
+        mediaRecorderRef.current.onstop = async () => {
+            try {
+                // Convert to WAV format for consistent backend processing
+                await convertAndAnalyzeRecording();
+            } catch (error) {
+                console.error('Error processing recording:', error);
+                setIsAnalysisError(true);
+                toast.error('Error processing recording. Please try again.');
+            }
+        };
+        
+        mediaRecorderRef.current.start();
+        setIsRecording(true);
+        startTimer();
+        
     } catch (error) {
-      console.error("Error accessing microphone:", error);
-      toast.error("Could not access microphone. Please check your permissions.");
+        console.error('Error starting recording:', error);
+        toast.error('Could not access microphone. Please check your permissions.');
     }
-  };
+};
+
+const convertAndAnalyzeRecording = async () => {
+    setIsProcessing(true);
+    setIsAnalysisError(false);
+    
+    try {
+        if (audioChunksRef.current.length === 0) {
+            throw new Error('No audio data recorded');
+        }
+
+        // Get the MIME type from the recorder
+        const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
+        console.log(`Processing audio with MIME type: ${mimeType}`);
+        
+        // Create initial blob from recorded chunks
+        const recordedBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        
+        let finalAudioBlob: Blob;
+        let fileName: string;
+        
+        // If it's already WAV, use it directly
+        if (mimeType.includes('wav')) {
+            finalAudioBlob = recordedBlob;
+            fileName = 'voice-recording.wav';
+            console.log('Using recorded WAV directly');
+        } else {
+            // Convert to WAV using Web Audio API
+            console.log('Converting audio to WAV format...');
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const arrayBuffer = await recordedBlob.arrayBuffer();
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                
+                // Convert to WAV
+                const wavBuffer = audioBufferToWav(audioBuffer);
+                finalAudioBlob = new Blob([wavBuffer], { type: 'audio/wav' });
+                fileName = 'voice-recording.wav';
+                
+                // Close audio context to free resources
+                await audioContext.close();
+                console.log('Successfully converted to WAV format');
+            } catch (conversionError) {
+                console.error('Error converting to WAV:', conversionError);
+                // Fallback: use original blob but with proper filename
+                finalAudioBlob = recordedBlob;
+                fileName = mimeType.includes('webm') ? 'voice-recording.webm' : 'voice-recording.audio';
+                console.log('Using original format as fallback');
+            }
+        }
+        
+        // Create audio URL for playback
+        const url = URL.createObjectURL(finalAudioBlob);
+        setAudioUrl(url);
+        
+        // Create File object for API
+        const audioFile = new File([finalAudioBlob], fileName, { 
+            type: finalAudioBlob.type,
+            lastModified: Date.now()
+        });
+        
+        console.log('FRONTEND: Starting voice analysis with file:', {
+            name: audioFile.name,
+            type: audioFile.type,
+            size: audioFile.size
+        });
+
+        // Analyze the voice file
+        const voiceData = await apiService.analyzeVoiceFile(audioFile);
+        
+        // Validate voice data
+        if (!voiceData || !Object.keys(voiceData).length) {
+            throw new Error('Voice analysis returned empty or invalid data');
+        }
+
+        // Check for critical features
+        const criticalFeatures = ['MDVP_Fo', 'MDVP_Jitter', 'MDVP_Shimmer', 'HNR'];
+        const missingFeatures = criticalFeatures.filter(
+            feature => typeof voiceData[feature as keyof typeof voiceData] !== 'number'
+        );
+
+        if (missingFeatures.length > 0) {
+            console.warn(`Some voice features are missing: ${missingFeatures.join(', ')}`);
+            // Don't throw error, just log warning as backend provides defaults
+        }
+
+        console.log('FRONTEND: Voice analysis successful:', voiceData);
+        setAudioAnalysis(voiceData);
+        onVoiceAnalyzed(voiceData);
+        toast.success('Voice analysis completed successfully');
+        
+    } catch (error) {
+        console.error('FRONTEND: Error in voice analysis:', error);
+        setIsAnalysisError(true);
+
+        let errorMessage = 'Error analyzing voice recording. ';
+        
+        if (error instanceof Error) {
+            if (error.message.includes('No audio data recorded')) {
+                errorMessage = 'No audio was recorded. Please try again.';
+            } else if (error.message.includes('Unsupported audio format')) {
+                errorMessage = 'This audio format is not supported. Please try using a different browser.';
+            } else if (error.message.includes('Network')) {
+                errorMessage = 'Could not connect to the server. Please check your internet connection.';
+            } else {
+                errorMessage = error.message;
+            }
+        }
+
+        toast.error(errorMessage);
+        
+    } finally {
+        setIsProcessing(false);
+    }
+};
   
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
@@ -189,76 +285,7 @@ const EnhancedVoiceRecorder: React.FC<EnhancedVoiceRecorderProps> = ({ onVoiceAn
     }
   };
   
-  const handleRecordingStop = async () => {
-    if (audioChunksRef.current.length === 0) return;
-    
-    setIsProcessing(true);
-    
-    try {
-      // Get the MIME type from the recorder
-      const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
-      
-      // Determine file extension based on MIME type
-      let fileExtension = 'webm';
-      if (mimeType.includes('wav')) {
-        fileExtension = 'wav';
-      } else if (mimeType.includes('mp3')) {
-        fileExtension = 'mp3';
-      } else if (mimeType.includes('ogg')) {
-        fileExtension = 'ogg';
-      }
-      
-      console.log(`Creating audio blob with type: ${mimeType}`);
-      
-      // Create audio blob and URL for playback
-      const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-      const url = URL.createObjectURL(audioBlob);
-      setAudioUrl(url);
-      
-      // Convert Blob to File for API compatibility
-      const audioFile = new File([audioBlob], `voice-recording.${fileExtension}`, { 
-        type: mimeType,
-        lastModified: Date.now()
-      });
-      
-      // Analyze voice recording using the real API service
-      const voiceFeatures = await apiService.analyzeVoiceFile(audioFile);
-      
-      // Convert to simplified voice data for the component
-      const simplifiedVoiceData = {
-        pitch: voiceFeatures.MDVP_Fo,
-        jitter: voiceFeatures.MDVP_Jitter,
-        shimmer: voiceFeatures.MDVP_Shimmer,
-        hnr: voiceFeatures.HNR
-      };
-      
-      setAudioAnalysis(voiceFeatures);
-      onVoiceAnalyzed(voiceFeatures);
-      
-      console.log("FRONTEND: Voice analysis successful:", voiceFeatures);
-      toast.success("Voice recording analyzed successfully");
-    } catch (error) {
-      console.error("Error processing voice recording:", error);
-      toast.error("Failed to analyze voice recording. Please try again.");
-      
-      // Fallback to mock data if real API fails
-      try {
-        // Use the helper function to get mock data
-        const mockVoiceFeatures = getMockVoiceData();
-        
-        setAudioAnalysis(mockVoiceFeatures);
-        onVoiceAnalyzed(mockVoiceFeatures);
-        
-        console.log("FRONTEND: Using fallback mock data:", mockVoiceFeatures);
-        toast.info("Using fallback data for demonstration");
-      } catch (fallbackError) {
-        console.error("Even fallback failed:", fallbackError);
-      }
-    } finally {
-      setIsProcessing(false);
-      setRecordingTime(0);
-    }
-  };
+
   
   const playAudio = () => {
     if (audioRef.current && audioUrl) {
@@ -273,6 +300,17 @@ const EnhancedVoiceRecorder: React.FC<EnhancedVoiceRecorderProps> = ({ onVoiceAn
       audioRef.current.currentTime = 0;
       setIsPlaying(false);
     }
+  };
+  
+
+
+  // Timer function to update recording time
+  const startTimer = () => {
+    if (timerRef.current) return;
+    
+    timerRef.current = window.setInterval(() => {
+      setRecordingTime(prev => prev + 1);
+    }, 1000);
   };
   
   return (

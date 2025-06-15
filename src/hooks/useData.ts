@@ -25,10 +25,12 @@ export const useData = (userId: string) => {
     
     const loadData = async () => {
       if (!userId) {
+        console.log("useData: No userId provided, skipping data loading");
         setLoading(false);
         return;
       }
       
+      console.log(`useData: Loading data for user ${userId}`);
       setLoading(true);
       
       // Track if we've successfully loaded at least one data type
@@ -36,7 +38,9 @@ export const useData = (userId: string) => {
       
       // Load each data type separately to prevent one failure from affecting others
       try {
+        console.log(`useData: Fetching voice history for user ${userId}`);
         const voiceData = await getUserVoiceHistory(userId);
+        console.log(`useData: Received voice history:`, voiceData);
         setVoiceHistory(voiceData);
         hasLoadedSomeData = true;
       } catch (voiceErr: any) {
@@ -44,7 +48,9 @@ export const useData = (userId: string) => {
       }
       
       try {
+        console.log(`useData: Fetching user history for user ${userId}`);
         const historyData = await getUserHistory(userId);
+        console.log(`useData: Received user history:`, historyData);
         setUserHistory(historyData);
         hasLoadedSomeData = true;
       } catch (historyErr: any) {
@@ -52,7 +58,9 @@ export const useData = (userId: string) => {
       }
       
       try {
+        console.log(`useData: Fetching graph data for user ${userId}`);
         const graphs = await getGraphData(userId);
+        console.log(`useData: Received graph data:`, graphs);
         setGraphData(graphs);
         hasLoadedSomeData = true;
       } catch (graphErr: any) {
@@ -61,7 +69,14 @@ export const useData = (userId: string) => {
       
       // If all requests failed, set a generic error
       if (!hasLoadedSomeData) {
+        console.error("useData: All data loading requests failed");
         setError("Could not load user data. Please check your connection and permissions.");
+        // Clear all data to ensure we're not using stale or dummy data
+        setVoiceHistory([]);
+        setUserHistory([]);
+        setGraphData([]);
+      } else {
+        console.log("useData: Successfully loaded at least some data");
       }
       
       setLoading(false);

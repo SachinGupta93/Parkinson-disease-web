@@ -1,16 +1,32 @@
 from fastapi import FastAPI, Depends, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import os
+import sys
 import logging
 from datetime import datetime
+
+# For safer model loading
+try:
+    from model_loader import safe_load_model
+except ImportError:
+    print("Model loader not available - will attempt standard module loading")
 
 # Routers
 try:
     # When running as a module from project root
     from backend.routers import predictions, general
+    from backend.routers import analyze_voice
 except ModuleNotFoundError:
     # When running directly from backend directory
-    from routers import predictions, general
+    try:
+        from routers import predictions, general
+        from routers import analyze_voice
+    except Exception as e:
+        print(f"Error importing routers: {str(e)}")
+        # Add current directory to path to help with imports
+        sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+        from routers import predictions, general
+        from routers import analyze_voice
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -39,10 +55,11 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],  # Allow all origins for development
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"]
 )
 
 @app.middleware("http")
@@ -72,9 +89,22 @@ async def test():
         "timestamp": datetime.now().isoformat()
     }
 
+# Initialize models at startup
+@app.on_event("startup")
+async def startup_event():
+    logger.info("🔧 Initializing models...")
+    try:
+        predictions.initialize_models()
+        logger.info("✅ Models initialized successfully")
+    except Exception as e:
+        logger.error(f"❌ Error initializing models: {str(e)}")
+        # Don't fail startup, but log the error
+        print(f"[ERROR] Model initialization failed: {str(e)}")
+
 # Include routers
 app.include_router(predictions.router, prefix="/api/v1")
 app.include_router(general.router, prefix="/api/v1")
+app.include_router(analyze_voice.router, prefix="/api/v1")
 
 # Main Application Runner (for local development)
 if __name__ == "__main__":

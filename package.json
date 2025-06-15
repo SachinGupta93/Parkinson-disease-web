@@ -12,6 +12,9 @@
     "test:gemini": "node scripts/test-gemini-connection-new.js",
     "test:gemini:models": "node scripts/test-gemini-models.js",
     "setup:gemini": "node -e \"process.platform === 'win32' ? require('child_process').execSync('scripts\\\\setup-gemini.bat', {stdio: 'inherit'}) : require('child_process').execSync('bash scripts/setup-gemini.sh', {stdio: 'inherit'})\"",
+    "clear:cache": "node scripts/clear-vite-cache.js",
+    "dev:fresh": "npm run clear:cache && vite --force",
+    "dev:debug": "vite --debug hmr,routes,fs",
     "postinstall": "echo \"\\x1b[32mTo set up Gemini AI integration, run: npm run setup:gemini\\x1b[0m\""
   },
   "dependencies": {
@@ -65,7 +68,7 @@
     "input-otp": "^1.2.4",
     "jspdf": "^3.0.1",
     "jspdf-autotable": "^5.0.2",
-    "lucide-react": "^0.462.0",
+    "lucide-react": "^0.515.0",
     "next-themes": "^0.3.0",
     "react": "^18.3.1",
     "react-day-picker": "^8.10.1",

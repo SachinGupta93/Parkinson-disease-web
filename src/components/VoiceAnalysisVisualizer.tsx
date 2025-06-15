@@ -73,8 +73,9 @@ type VoiceFeatures = {
 };
 
 interface VoiceAnalysisVisualizerProps {
-  voiceFeatures: VoiceFeatures | null;
+  voiceFeatures?: VoiceFeatures | null;
   loading?: boolean;
+  assessments?: any[]; // Adding assessments property
 }
 
 // Dummy voice features data for when no real data is available
@@ -93,8 +94,9 @@ const DUMMY_VOICE_FEATURES: VoiceFeatures = {
 };
 
 const VoiceAnalysisVisualizer: React.FC<VoiceAnalysisVisualizerProps> = ({ 
-  voiceFeatures,
-  loading = false
+  voiceFeatures = null,
+  loading = false,
+  assessments = []
 }) => {
   const { theme } = useContext(UserContext);
   const isDarkMode = theme === 'dark';
@@ -102,32 +104,62 @@ const VoiceAnalysisVisualizer: React.FC<VoiceAnalysisVisualizerProps> = ({
   
   const coreVoiceKeys: (keyof VoiceFeatures)[] = ['mdvpFo', 'mdvpJitter', 'mdvpShimmer', 'nhr', 'hnr'];
   
+  // Check if we have assessments data with voice features
+  const hasAssessmentsWithVoice = assessments && assessments.length > 0 && 
+    assessments.some(a => a.features && coreVoiceKeys.some(key => 
+      a.features[key] !== undefined && a.features[key] !== null && !isNaN(Number(a.features[key]))
+    ));
+
   // Check if the provided voiceFeatures has at least one of the core voice metrics.
-  const hasActualVoiceData = voiceFeatures && coreVoiceKeys.some(key => {
+  const hasActualVoiceData = (voiceFeatures && coreVoiceKeys.some(key => {
     const value = voiceFeatures[key];
     return value !== undefined && value !== null && !isNaN(Number(value));
-  });
+  })) || hasAssessmentsWithVoice;
 
   console.log('VoiceAnalysisVisualizer - Input voiceFeatures:', voiceFeatures);
+  console.log('VoiceAnalysisVisualizer - Has assessments with voice:', hasAssessmentsWithVoice);
   console.log('VoiceAnalysisVisualizer - Has actual voice data:', hasActualVoiceData);
 
   // Extract only the voice-related features if we have actual data
   let extractedVoiceFeatures: VoiceFeatures | null = null;
   
-  if (hasActualVoiceData && voiceFeatures) {
-    extractedVoiceFeatures = {
-      mdvpFo: voiceFeatures.mdvpFo,
-      mdvpFhi: voiceFeatures.mdvpFhi,
-      mdvpFlo: voiceFeatures.mdvpFlo,
-      mdvpJitter: voiceFeatures.mdvpJitter,
-      mdvpShimmer: voiceFeatures.mdvpShimmer,
-      nhr: voiceFeatures.nhr,
-      hnr: voiceFeatures.hnr,
-      rpde: voiceFeatures.rpde,
-      dfa: voiceFeatures.dfa,
-      spread1: voiceFeatures.spread1,
-      spread2: voiceFeatures.spread2
-    };
+  if (hasActualVoiceData) {
+    if (voiceFeatures) {
+      extractedVoiceFeatures = {
+        mdvpFo: voiceFeatures.mdvpFo,
+        mdvpFhi: voiceFeatures.mdvpFhi,
+        mdvpFlo: voiceFeatures.mdvpFlo,
+        mdvpJitter: voiceFeatures.mdvpJitter,
+        mdvpShimmer: voiceFeatures.mdvpShimmer,
+        nhr: voiceFeatures.nhr,
+        hnr: voiceFeatures.hnr,
+        rpde: voiceFeatures.rpde,
+        dfa: voiceFeatures.dfa,
+        spread1: voiceFeatures.spread1,
+        spread2: voiceFeatures.spread2
+      };
+    } else if (hasAssessmentsWithVoice) {
+      // Use the most recent assessment with voice data
+      const assessmentWithVoice = [...assessments]
+        .filter(a => a.voiceRecorded && a.features)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+      
+      if (assessmentWithVoice && assessmentWithVoice.features) {
+        extractedVoiceFeatures = {
+          mdvpFo: assessmentWithVoice.features.mdvpFo,
+          mdvpFhi: assessmentWithVoice.features.mdvpFhi,
+          mdvpFlo: assessmentWithVoice.features.mdvpFlo,
+          mdvpJitter: assessmentWithVoice.features.mdvpJitter,
+          mdvpShimmer: assessmentWithVoice.features.mdvpShimmer,
+          nhr: assessmentWithVoice.features.nhr,
+          hnr: assessmentWithVoice.features.hnr,
+          rpde: assessmentWithVoice.features.rpde,
+          dfa: assessmentWithVoice.features.dfa,
+          spread1: assessmentWithVoice.features.spread1,
+          spread2: assessmentWithVoice.features.spread2
+        };
+      }
+    }
   }
   
   const dataToUse = extractedVoiceFeatures || DUMMY_VOICE_FEATURES;
@@ -220,17 +252,25 @@ const VoiceAnalysisVisualizer: React.FC<VoiceAnalysisVisualizerProps> = ({
 
   const cardTitleText = isUsingSampleData && !loading
     ? "Voice Analysis (Sample Data)"
+    : hasAssessmentsWithVoice && !voiceFeatures
+    ? "Voice Analysis (Assessment Data)"
     : "Voice Analysis Visualization";
     
   return (
     <Card className={cardClassNames}>
-      <CardHeader className="pb-2">
+      <CardHeader className="pb-2 pt-3">
         <CardTitle className={isUsingSampleData && !loading ? "dark:text-blue-300" : "text-purple-700 dark:text-purple-300"}>
           {cardTitleText}
         </CardTitle>
         {isUsingSampleData && !loading && (
           <p className="text-xs text-muted-foreground">
             Showing sample data as actual voice metrics are incomplete or missing.
+          </p>
+        )}
+        {/* Message when using assessment data */}
+        {!isUsingSampleData && hasAssessmentsWithVoice && !voiceFeatures && !loading && (
+          <p className="text-xs text-muted-foreground">
+            Showing voice data from your most recent assessment.
           </p>
         )}
         {/* Optional: Message if voiceFeatures is an empty object and not loading */}
@@ -262,7 +302,7 @@ const VoiceAnalysisVisualizer: React.FC<VoiceAnalysisVisualizerProps> = ({
             <TabsTrigger value="pie" className="px-2 text-xs sm:text-sm sm:px-3">Pie</TabsTrigger>
           </TabsList>
         </Tabs>
-        <div className="bg-white/50 dark:bg-zinc-900/50 dark:border-zinc-800 rounded-lg p-1 flex-grow">
+        <div className="bg-white/50 dark:bg-zinc-900/50 dark:border-zinc-800 rounded-lg p-1 h-[300px]">
         <>
           <ResponsiveContainer width="100%" height="100%">
               {chartType === 'bar' && (
@@ -457,8 +497,9 @@ const VoiceAnalysisVisualizer: React.FC<VoiceAnalysisVisualizerProps> = ({
                 </PieChart>
               )}
           </ResponsiveContainer>
-          </>
-        </div>        {/* Voice analysis explanation - compact layout */}
+        </>
+        </div>
+        {/* Voice analysis explanation - compact layout */}
         <div className="mt-2 text-xs text-muted-foreground bg-white/50 dark:bg-zinc-800/50 p-2 rounded-md flex items-center justify-between">
           <div className="flex gap-3">
             <div>

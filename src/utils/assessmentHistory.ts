@@ -1,6 +1,6 @@
 import { ref, set, get, getDatabase } from "firebase/database";
 import { app } from "@/lib/firebase";
-import { ParkinsonsFeatures } from "./parkinsonPredictor";
+import { ParkinsonsFeatures } from "@/types";
 import { UserContext } from "@/App";
 import { useContext } from "react";
 
@@ -134,7 +134,7 @@ export const getAssessmentHistory = async (userId?: string): Promise<Assessment[
     }
     
     console.log('No data found in Firebase, returning empty array');
-    return [];
+    return []; // Return empty array instead of generating sample data
   } catch (error) {
     console.error("Error retrieving assessment history from Firebase:", error);
     console.log('Falling back to local assessment history');
@@ -158,20 +158,16 @@ const getLocalAssessmentHistory = (): Assessment[] => {
     const parsedHistory: Assessment[] = JSON.parse(storedHistory);
     console.log('Parsed history from localStorage:', parsedHistory);
     
-    // Patch: inject mock result and allModelResults if missing
+    // Process history entries, ensure dates are parsed correctly
     const processedHistory = parsedHistory.map(assessment => ({
       ...assessment,
       date: new Date(assessment.date),
-      result: assessment.result || {
-        riskScore: Math.floor(Math.random() * 100),
-        probability: Math.random(),
-        status: Math.random() > 0.5 ? 1 : 0,
-        modelUsed: 'ensemble'
-      },
-      allModelResults: assessment.allModelResults && assessment.allModelResults.length > 0 ? assessment.allModelResults : [
-        { modelName: 'Model A', riskScore: Math.floor(Math.random() * 100), probability: Math.random(), confidence: Math.random() },
-        { modelName: 'Model B', riskScore: Math.floor(Math.random() * 100), probability: Math.random(), confidence: Math.random() }
-      ]
+      // No fallback to mock data - use only real data from assessments
+      result: assessment.result,
+      // Use only real model results, or null if none exist
+      allModelResults: assessment.allModelResults && assessment.allModelResults.length > 0 
+        ? assessment.allModelResults 
+        : null
     }));
     
     console.log('Processed history with patched data:', processedHistory);
@@ -197,6 +193,9 @@ export const clearAssessmentHistory = async (userId?: string): Promise<void> => 
 const generateId = (): string => {
   return Date.now().toString(36) + Math.random().toString(36).substring(2);
 };
+
+// These functions have been removed to ensure we only use real data
+// No sample data generation or saving of sample data to Firebase
 
 // Calculate progress between assessments
 export const calculateProgress = (assessments: Assessment[]): { 

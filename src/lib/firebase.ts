@@ -11,12 +11,12 @@ const USE_FIRESTORE = false; // Set to false since you're using Realtime Databas
 const defaultConfig = {
    // Replace the hardcoded API key with environment variable
   apiKey: import.meta.env.VITE_GEMINI_API_KEY,
-  authDomain: "parkinsons-mock-project.firebaseapp.com",
-  projectId: "parkinsons-mock-project",
-  storageBucket: "parkinsons-mock-project.appspot.com",
+  authDomain: "parkinson-disease-1deeb.firebaseapp.com",
+  projectId: "parkinson-disease-1deeb",
+  storageBucket: "parkinson-disease-1deeb.appspot.com",
   messagingSenderId: "123456789012",
   appId: "1:123456789012:web:abcdef1234567890abcdef",
-  databaseURL: "https://parkinsons-mock-project-default-rtdb.firebaseio.com"
+  databaseURL: "https://parkinson-disease-1deeb-default-rtdb.firebaseio.com"
 };
 
 // Firebase configuration - use environment variables or fallback to defaults

@@ -17,7 +17,11 @@ import {
 } from 'recharts';
 import { ArrowUp, ArrowDown } from 'lucide-react';
 
-const ProgressTracker = () => {
+interface ProgressTrackerProps {
+  assessments?: Assessment[];
+}
+
+const ProgressTracker = ({ assessments: propAssessments }: ProgressTrackerProps) => {
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [progress, setProgress] = useState<{
     dates: string[];
@@ -32,6 +36,16 @@ const ProgressTracker = () => {
   const [error, setError] = useState<string | null>(null); // Initialize error to null
 
   useEffect(() => {
+    // If assessments are provided as props, use them directly
+    if (propAssessments && propAssessments.length > 0) {
+      setAssessments(propAssessments);
+      const progressData = calculateProgress(propAssessments);
+      setProgress(progressData);
+      setIsLoading(false);
+      return;
+    }
+
+    // Otherwise, load assessments from history
     async function loadHistory() {
       setIsLoading(true); // Set loading to true when starting
       setError(null); // Reset error state
@@ -57,7 +71,7 @@ const ProgressTracker = () => {
     }
     
     loadHistory();
-  }, []); // Added empty dependency array
+  }, [propAssessments]); // Added propAssessments to dependency array
   
   if (isLoading) { // Added loading state UI
     return (

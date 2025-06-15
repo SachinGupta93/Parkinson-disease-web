@@ -26,7 +26,7 @@ import AboutPage from './pages/About'; // Import the new About page
 import MultiModelAnalysis from './pages/MultiModelAnalysis'; // Import the new multi-model analysis page
 
 // Voice Analysis Components
-import VoiceRecorder from './components/VoiceRecorder';
+import EnhancedVoiceRecorder from './components/EnhancedVoiceRecorder';
 import { VoiceAnalysisForm } from './components/VoiceAnalysis/VoiceAnalysisForm';
 import { RealTimeAnalysis } from './components/VoiceAnalysis/RealTimeAnalysis';
 import { PredictionVisualization } from './components/VoiceAnalysis/PredictionVisualization';
@@ -263,7 +263,7 @@ const App = () => {
                     exit={{ opacity: 0, y: -20 }}
                     transition={{ duration: 0.3 }}
                   >
-                    <VoiceRecorder onVoiceAnalyzed={() => {}} />
+                    <EnhancedVoiceRecorder onVoiceAnalyzed={() => {}} />
                   </motion.div>
                 } />
                 <Route path="manual-input" element={
@@ -368,6 +368,18 @@ const App = () => {
               
               {/* Profile and Account Management */}
               <Route path="profile" element={
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <UserAccount />
+                </motion.div>
+              } />
+              
+              {/* Account route (alias for profile) */}
+              <Route path="account" element={
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
