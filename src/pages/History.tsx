@@ -7,11 +7,12 @@ import { Assessment, getAssessmentHistory, clearAssessmentHistory } from '@/util
 import { toast } from 'sonner';
 import ProgressTracker from '@/components/ProgressTracker';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import ModelComparisonChart from '@/components/ModelComparisonChart';
+import ModelComparison from '@/components/ModelComparison';
 import DatasetSummaryChart from '@/components/DatasetSummaryChart';
 import SymptomTrendsChart from '@/components/SymptomTrendsChart';
-import FeatureImportanceChart from '@/components/FeatureImportanceChart';
+import FeatureImportance from '@/components/FeatureImportance';
 import VoiceAnalysisVisualizer from '@/components/VoiceAnalysisVisualizer';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import { UserContext } from '@/App';
 import { 
   BarChart3, 
@@ -66,13 +67,38 @@ const History = () => {
     async function loadHistory() {
       try {
         setIsLoading(true);
+        console.log('History - Loading assessment history for user:', user);
+        console.log('History - User ID:', user?.id);
+        
+        // Debug: Check if there's any data in Firebase for this user
+        if (user?.id) {
+          try {
+            const { ref, get, getDatabase } = await import('firebase/database');
+            const { app } = await import('@/lib/firebase');
+            const database = getDatabase(app);
+            const snapshot = await get(ref(database, `users/${user.id}`));
+            console.log('History - Raw Firebase data for user:', snapshot.exists() ? snapshot.val() : 'No data');
+            
+            const voiceHistorySnapshot = await get(ref(database, `users/${user.id}/voiceHistory`));
+            console.log('History - Voice history exists:', voiceHistorySnapshot.exists());
+            if (voiceHistorySnapshot.exists()) {
+              console.log('History - Voice history data:', voiceHistorySnapshot.val());
+            }
+          } catch (debugError) {
+            console.error('History - Debug Firebase check failed:', debugError);
+          }
+        }
+        
         // Get real assessment history from Firebase or localStorage
         const history = await getAssessmentHistory(user?.id);
         
-        console.log('Assessment history loaded:', history);
+        console.log('History - Assessment history loaded:', history);
+        console.log('History - History length:', history.length);
         
         if (history.length === 0) {
-          console.log('No assessment history found, generating demo data');
+          console.log('History - No assessment history found for user:', user?.id);
+          console.log('History - User is logged in:', !!user);
+          console.log('History - Generating demo data');
           toast.info("No assessment history found. Using demo data for visualization.");
           
           // Generate demo data with realistic model predictions
@@ -183,7 +209,9 @@ const History = () => {
           setSelectedAssessment(demoAssessments[0]);
           console.log('Set demo data as current assessments');
         } else {
-          console.log('Using real assessment history:', history);
+          console.log('History - Using real assessment history:', history);
+          console.log('History - Real data count:', history.length);
+          console.log('History - First assessment sample:', history[0]);
           
           // Enhance real data with feature importance if missing
           const enhancedHistory = history.map(assessment => {
@@ -242,17 +270,50 @@ const History = () => {
     }
   };
 
+  const handleRefreshData = async () => {
+    console.log('=== Manual refresh triggered ===');
+    setIsLoading(true);
+    try {
+      const history = await getAssessmentHistory(user?.id);
+      console.log('Refreshed history:', history);
+      
+      if (history.length > 0) {
+        setAssessments(history);
+        setSelectedAssessment(history[history.length - 1]);
+        toast.success(`Loaded ${history.length} assessments from database`);
+      } else {
+        toast.info('No assessment data found in database');
+      }
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+      toast.error('Failed to refresh data');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Filter assessments based on time range and selected date
   const getFilteredAssessments = () => {
+    // Early return if no assessments
+    if (!assessments || !Array.isArray(assessments)) {
+      return [];
+    }
+    
     // If a specific date is selected, filter by that date
     if (selectedDate) {
       return assessments.filter(assessment => {
-        const assessmentDate = new Date(assessment.date);
-        return (
-          assessmentDate.getDate() === selectedDate.getDate() &&
-          assessmentDate.getMonth() === selectedDate.getMonth() &&
-          assessmentDate.getFullYear() === selectedDate.getFullYear()
-        );
+        try {
+          if (!assessment || !assessment.date) return false;
+          const assessmentDate = new Date(assessment.date);
+          return (
+            assessmentDate.getDate() === selectedDate.getDate() &&
+            assessmentDate.getMonth() === selectedDate.getMonth() &&
+            assessmentDate.getFullYear() === selectedDate.getFullYear()
+          );
+        } catch (error) {
+          console.warn('Invalid date in assessment:', assessment);
+          return false;
+        }
       });
     }
     
@@ -276,10 +337,23 @@ const History = () => {
         return assessments;
     }
     
-    return assessments.filter(assessment => new Date(assessment.date) >= cutoffDate);
+    return assessments.filter(assessment => {
+      try {
+        if (!assessment || !assessment.date) return false;
+        return new Date(assessment.date) >= cutoffDate;
+      } catch (error) {
+        console.warn('Invalid date in assessment:', assessment);
+        return false;
+      }
+    });
   };
 
   const filteredAssessments = getFilteredAssessments();
+  
+  // Debug logging
+  console.log('History - assessments:', assessments);
+  console.log('History - filteredAssessments:', filteredAssessments);
+  console.log('History - isLoading:', isLoading);
   
   // Clear the selected date when time range changes
   useEffect(() => {
@@ -288,11 +362,23 @@ const History = () => {
   
   // Get risk trend (increasing, decreasing, stable)
   const getRiskTrend = () => {
-    if (filteredAssessments.length < 2) return { trend: "stable", label: "Stable", color: "text-blue-600 dark:text-blue-400" };
+    if (!filteredAssessments || filteredAssessments.length < 2) {
+      return { trend: "stable", label: "Stable", color: "text-blue-600 dark:text-blue-400" };
+    }
     
-    const sortedAssessments = [...filteredAssessments].sort((a, b) => 
-      new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
+    const sortedAssessments = [...filteredAssessments]
+      .filter(assessment => assessment && assessment.result && typeof assessment.result.riskScore === 'number')
+      .sort((a, b) => {
+        try {
+          return new Date(a.date).getTime() - new Date(b.date).getTime();
+        } catch (error) {
+          return 0;
+        }
+      });
+    
+    if (sortedAssessments.length < 2) {
+      return { trend: "stable", label: "Stable", color: "text-blue-600 dark:text-blue-400" };
+    }
     
     const firstScore = sortedAssessments[0].result.riskScore;
     const lastScore = sortedAssessments[sortedAssessments.length - 1].result.riskScore;
@@ -309,13 +395,19 @@ const History = () => {
 
   // Get average risk score
   const getAverageRiskScore = () => {
-    if (filteredAssessments.length === 0) return 0;
+    if (!filteredAssessments || filteredAssessments.length === 0) return 0;
     
-    const sum = filteredAssessments.reduce((acc, assessment) => 
+    const validAssessments = filteredAssessments.filter(assessment => 
+      assessment && assessment.result && typeof assessment.result.riskScore === 'number'
+    );
+    
+    if (validAssessments.length === 0) return 0;
+    
+    const sum = validAssessments.reduce((acc, assessment) => 
       acc + assessment.result.riskScore, 0
     );
     
-    return Math.round(sum / filteredAssessments.length);
+    return Math.round(sum / validAssessments.length);
   };
 
   // Get risk category based on average score
@@ -360,6 +452,56 @@ const History = () => {
           </div>
           
           <div className="flex items-center gap-2">
+            {/* Debug button - only show in development */}
+            {process.env.NODE_ENV === 'development' && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={async () => {
+                  console.log('=== DEBUG: Manual data check ===');
+                  console.log('Current user:', user);
+                  console.log('User ID:', user?.id);
+                  
+                  if (user?.id) {
+                    try {
+                      const { ref, get, getDatabase } = await import('firebase/database');
+                      const { app } = await import('@/lib/firebase');
+                      const database = getDatabase(app);
+                      
+                      // Check user profile
+                      const profileSnapshot = await get(ref(database, `users/${user.id}/profile`));
+                      console.log('Profile exists:', profileSnapshot.exists());
+                      if (profileSnapshot.exists()) {
+                        console.log('Profile data:', profileSnapshot.val());
+                      }
+                      
+                      // Check voice history
+                      const voiceHistorySnapshot = await get(ref(database, `users/${user.id}/voiceHistory`));
+                      console.log('Voice history exists:', voiceHistorySnapshot.exists());
+                      if (voiceHistorySnapshot.exists()) {
+                        console.log('Voice history data:', voiceHistorySnapshot.val());
+                      }
+                      
+                      // Check all user data
+                      const allUserDataSnapshot = await get(ref(database, `users/${user.id}`));
+                      console.log('All user data:', allUserDataSnapshot.exists() ? allUserDataSnapshot.val() : 'No data');
+                      
+                      // Try to reload history
+                      const history = await getAssessmentHistory(user.id);
+                      console.log('Reloaded history:', history);
+                      
+                    } catch (error) {
+                      console.error('Debug check failed:', error);
+                    }
+                  }
+                }}
+                className="flex items-center gap-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-800"
+              >
+                <Info className="h-4 w-4" />
+                <span className="hidden sm:inline">Debug</span>
+              </Button>
+            )}
+            
             <Button 
               variant="outline" 
               size="sm" 
@@ -368,6 +510,16 @@ const History = () => {
             >
               <Home className="h-4 w-4" />
               <span className="hidden sm:inline">Home</span>
+            </Button>
+            
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleRefreshData}
+              className="flex items-center gap-1"
+            >
+              <Activity className="h-4 w-4" />
+              <span className="hidden sm:inline">Refresh</span>
             </Button>
             
             <Button 
@@ -574,37 +726,55 @@ const History = () => {
                           <div className="bg-slate-100 dark:bg-slate-800 p-3 rounded-lg">
                             <p className="text-sm text-muted-foreground">First Assessment</p>
                             <p className="font-medium">
-                              {filteredAssessments.length > 0 
-                                ? format(new Date(filteredAssessments.sort((a, b) => 
-                                    new Date(a.date).getTime() - new Date(b.date).getTime())[0].date), 
-                                  'MMM d, yyyy')
-                                : 'N/A'}
+                              {(() => {
+                                const validAssessments = filteredAssessments.filter(a => a && a.date);
+                                if (validAssessments.length === 0) return 'N/A';
+                                try {
+                                  const sorted = validAssessments.sort((a, b) => 
+                                    new Date(a.date).getTime() - new Date(b.date).getTime());
+                                  return format(new Date(sorted[0].date), 'MMM d, yyyy');
+                                } catch (error) {
+                                  return 'N/A';
+                                }
+                              })()}
                             </p>
                           </div>
                           <div className="bg-slate-100 dark:bg-slate-800 p-3 rounded-lg">
                             <p className="text-sm text-muted-foreground">Latest Assessment</p>
                             <p className="font-medium">
-                              {filteredAssessments.length > 0 
-                                ? format(new Date(filteredAssessments.sort((a, b) => 
-                                    new Date(b.date).getTime() - new Date(a.date).getTime())[0].date), 
-                                  'MMM d, yyyy')
-                                : 'N/A'}
+                              {(() => {
+                                const validAssessments = filteredAssessments.filter(a => a && a.date);
+                                if (validAssessments.length === 0) return 'N/A';
+                                try {
+                                  const sorted = validAssessments.sort((a, b) => 
+                                    new Date(b.date).getTime() - new Date(a.date).getTime());
+                                  return format(new Date(sorted[0].date), 'MMM d, yyyy');
+                                } catch (error) {
+                                  return 'N/A';
+                                }
+                              })()}
                             </p>
                           </div>
                           <div className="bg-slate-100 dark:bg-slate-800 p-3 rounded-lg">
                             <p className="text-sm text-muted-foreground">Lowest Risk Score</p>
                             <p className="font-medium">
-                              {filteredAssessments.length > 0 
-                                ? Math.min(...filteredAssessments.map(a => a.result.riskScore))
-                                : 'N/A'}
+                              {(() => {
+                                const validScores = filteredAssessments
+                                  .filter(a => a && a.result && typeof a.result.riskScore === 'number')
+                                  .map(a => a.result.riskScore);
+                                return validScores.length > 0 ? Math.min(...validScores) : 'N/A';
+                              })()}
                             </p>
                           </div>
                           <div className="bg-slate-100 dark:bg-slate-800 p-3 rounded-lg">
                             <p className="text-sm text-muted-foreground">Highest Risk Score</p>
                             <p className="font-medium">
-                              {filteredAssessments.length > 0 
-                                ? Math.max(...filteredAssessments.map(a => a.result.riskScore))
-                                : 'N/A'}
+                              {(() => {
+                                const validScores = filteredAssessments
+                                  .filter(a => a && a.result && typeof a.result.riskScore === 'number')
+                                  .map(a => a.result.riskScore);
+                                return validScores.length > 0 ? Math.max(...validScores) : 'N/A';
+                              })()}
                             </p>
                           </div>
                         </div>
@@ -620,7 +790,9 @@ const History = () => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <DatasetSummaryChart assessments={filteredAssessments} />
+                      <ErrorBoundary>
+                        <DatasetSummaryChart assessments={filteredAssessments} />
+                      </ErrorBoundary>
                     </CardContent>
                   </Card>
                 </div>
@@ -874,7 +1046,9 @@ const History = () => {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="h-[400px]">
-                    <DatasetSummaryChart assessments={filteredAssessments} />
+                    <ErrorBoundary>
+                      <DatasetSummaryChart assessments={filteredAssessments} />
+                    </ErrorBoundary>
                   </CardContent>
                 </Card>
                 
@@ -886,16 +1060,17 @@ const History = () => {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="h-[400px]">
-                    {selectedAssessment?.allModelResults ? (
-                      <ModelComparisonChart 
-                        modelResults={selectedAssessment.allModelResults} 
-                        multiModelResults={selectedAssessment.multiModelResults} 
-                      />
-                    ) : (
-                      <div className="flex items-center justify-center h-full">
-                        <p className="text-muted-foreground">Select an assessment to view model comparison</p>
-                      </div>
-                    )}
+                    <ErrorBoundary>
+                      {selectedAssessment?.allModelResults ? (
+                        <ModelComparison 
+                          modelResults={selectedAssessment.allModelResults} 
+                        />
+                      ) : (
+                        <div className="flex items-center justify-center h-full">
+                          <p className="text-muted-foreground">Select an assessment to view model comparison</p>
+                        </div>
+                      )}
+                    </ErrorBoundary>
                   </CardContent>
                 </Card>
                 
@@ -907,7 +1082,9 @@ const History = () => {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="h-[400px]">
-                    <SymptomTrendsChart assessments={filteredAssessments} />
+                    <ErrorBoundary>
+                      <SymptomTrendsChart assessments={filteredAssessments} />
+                    </ErrorBoundary>
                   </CardContent>
                 </Card>
               </div>
@@ -920,3 +1097,4 @@ const History = () => {
 };
 
 export default History;
+

@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format, subDays, subMonths } from 'date-fns';
+import { toast } from 'sonner';
 import { UserContext } from '../../App';
 import { useData } from '../../hooks/useData';
 import { useRealtimeData } from '../../hooks/useRealtimeData';
@@ -87,7 +88,7 @@ const EnhancedDashboard: React.FC = () => {
 
   const { voiceHistory: dataVoiceHistory, loading: dataLoading, error: dataError } = useData(user?.id || '');
   const { data: realtimeDataFromHook, loading: realtimeLoading, error: realtimeError } = useRealtimeData(user?.id || '');
-  const { loading: assessmentLoading } = useAssessmentHistory();
+  const { assessments, loading: assessmentLoading } = useAssessmentHistory();
   const { models: availableModels, loading: modelsLoading } = useBackendModels();
 
   const [voiceHistory, setVoiceHistory] = useState<PredictionResponse[]>([]);
@@ -106,8 +107,12 @@ const EnhancedDashboard: React.FC = () => {
     console.log("EnhancedDashboard: Data loading state changed", { 
       dataLoading, 
       dataError, 
-      dataVoiceHistoryLength: dataVoiceHistory?.length || 0 
+      dataVoiceHistoryLength: dataVoiceHistory?.length || 0,
+      assessmentLoading,
+      assessmentsLength: assessments?.length || 0
     });
+    
+    console.log("EnhancedDashboard: Assessment data:", assessments);
     
     if (dataLoading) {
       console.log("EnhancedDashboard: Data is loading, clearing state");
@@ -123,7 +128,56 @@ const EnhancedDashboard: React.FC = () => {
       return;
     }
 
-    if (dataVoiceHistory && dataVoiceHistory.length > 0) {
+    // Use assessment data if voice history is empty but assessments exist
+    if ((!dataVoiceHistory || dataVoiceHistory.length === 0) && assessments && assessments.length > 0) {
+      console.log("EnhancedDashboard: Using assessment data as fallback:", assessments);
+      
+      try {
+        const transformedFromAssessments = assessments.map(assessment => ({
+          timestamp: assessment.date instanceof Date ? assessment.date.toISOString() : new Date().toISOString(),
+          prediction: {
+            status: assessment.result.status === 1,
+            confidence: assessment.result.probability,
+            severity: assessment.result.riskScore,
+            model_predictions: assessment.allModelResults?.reduce((acc, model) => {
+              acc[model.modelName] = model.riskScore;
+              return acc;
+            }, {} as Record<string, number>) || {},
+            model_probabilities: assessment.allModelResults?.reduce((acc, model) => {
+              acc[model.modelName] = model.probability;
+              return acc;
+            }, {} as Record<string, number>) || {}
+          },
+          recommendations: [],
+          voice_metrics: {
+            pitch: assessment.features.mdvpFo || 0,
+            jitter: assessment.features.mdvpJitter || 0,
+            shimmer: assessment.features.mdvpShimmer || 0,
+            hnr: assessment.features.hnr || 0
+          }
+        }));
+        
+        console.log("EnhancedDashboard: Transformed assessment data:", transformedFromAssessments);
+        setVoiceHistory(transformedFromAssessments);
+        
+        // Show success toast
+        toast.success(`Loaded ${assessments.length} assessments from your history`);
+        
+        // Also set model predictions from assessments
+        if (assessments[0]?.allModelResults) {
+          const modelPreds = assessments[0].allModelResults.map(model => ({
+            model: model.modelName,
+            prediction: model.riskScore,
+            confidence: model.confidence || 0
+          }));
+          setModelPredictions(modelPreds);
+        }
+        
+      } catch (error) {
+        console.error("EnhancedDashboard: Error processing assessment data:", error);
+        setVoiceHistory([]);
+      }
+    } else if (dataVoiceHistory && dataVoiceHistory.length > 0) {
       console.log("EnhancedDashboard: Processing real voice history data:", dataVoiceHistory);
       
       try {
@@ -164,11 +218,25 @@ const EnhancedDashboard: React.FC = () => {
         setVoiceHistory([]);
       }
     } else {
-      console.log("EnhancedDashboard: No voice history data available");
+      console.log("EnhancedDashboard: No voice history or assessment data available");
+      console.log("EnhancedDashboard: dataVoiceHistory length:", dataVoiceHistory?.length || 0);
+      console.log("EnhancedDashboard: assessments length:", assessments?.length || 0);
+      
+      // Show info toast only if user is logged in and we're not loading
+      if (user?.id && !dataLoading && !assessmentLoading) {
+        toast.info("No assessment data found. Take your first assessment to see insights here!", {
+          action: {
+            label: "Take Assessment",
+            onClick: () => navigate('/symptom-checker')
+          }
+        });
+      }
+      
       // Don't use sample data, just show empty state
       setVoiceHistory([]);
+      setModelPredictions([]);
     }
-  }, [dataVoiceHistory, dataLoading, dataError]);
+  }, [dataVoiceHistory, dataLoading, dataError, assessments, assessmentLoading]);
 
   const processLatestAnalysis = (analysis: PredictionResponse) => {
     console.log("processLatestAnalysis: Processing analysis data:", analysis);
@@ -566,6 +634,99 @@ const EnhancedDashboard: React.FC = () => {
           </p>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
+          {/* Debug button - only show in development */}
+          {process.env.NODE_ENV === 'development' && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={async () => {
+                console.log('=== DASHBOARD DEBUG: Manual data check ===');
+                console.log('Current user:', user);
+                console.log('User ID:', user?.id);
+                
+                if (user?.id) {
+                  try {
+                    const { ref, get, getDatabase } = await import('firebase/database');
+                    const { app } = await import('@/lib/firebase');
+                    const database = getDatabase(app);
+                    
+                    // Check voice history using both methods
+                    const voiceHistorySnapshot = await get(ref(database, `users/${user.id}/voiceHistory`));
+                    console.log('DASHBOARD - Voice history exists:', voiceHistorySnapshot.exists());
+                    if (voiceHistorySnapshot.exists()) {
+                      console.log('DASHBOARD - Voice history data:', voiceHistorySnapshot.val());
+                    }
+                    
+                    // Try both data loading methods
+                    const { getUserVoiceHistory } = await import('@/services/dataService');
+                    const { getAssessmentHistory } = await import('@/utils/assessmentHistory');
+                    
+                    const voiceData = await getUserVoiceHistory(user.id);
+                    console.log('DASHBOARD - getUserVoiceHistory result:', voiceData);
+                    
+                    const assessmentData = await getAssessmentHistory(user.id);
+                    console.log('DASHBOARD - getAssessmentHistory result:', assessmentData);
+                    
+                    // Check all user data
+                    const allUserDataSnapshot = await get(ref(database, `users/${user.id}`));
+                    console.log('DASHBOARD - All user data:', allUserDataSnapshot.exists() ? allUserDataSnapshot.val() : 'No data');
+                    
+                    // Check if there's any data at all for this user
+                    if (allUserDataSnapshot.exists()) {
+                      const userData = allUserDataSnapshot.val();
+                      console.log('DASHBOARD - User data structure:', Object.keys(userData));
+                      
+                      // Check each possible data location
+                      if (userData.voiceHistory) {
+                        console.log('DASHBOARD - voiceHistory keys:', Object.keys(userData.voiceHistory));
+                        console.log('DASHBOARD - voiceHistory sample:', Object.values(userData.voiceHistory)[0]);
+                      }
+                      if (userData.assessments) {
+                        console.log('DASHBOARD - assessments keys:', Object.keys(userData.assessments));
+                      }
+                      if (userData.profile) {
+                        console.log('DASHBOARD - profile data:', userData.profile);
+                      }
+                    } else {
+                      console.log('❌ DASHBOARD - NO DATA FOUND FOR USER:', user.id);
+                      console.log('This could mean:');
+                      console.log('1. User has not taken any assessments yet');
+                      console.log('2. Data was saved under different user ID');
+                      console.log('3. Data was saved to different Firebase path');
+                    }
+                    
+                    // Show summary in toast
+                    const voiceCount = voiceData?.length || 0;
+                    const assessmentCount = assessmentData?.length || 0;
+                    const hasAnyData = allUserDataSnapshot.exists();
+                    toast.info(`Debug: Found ${voiceCount} voice records, ${assessmentCount} assessments. User data exists: ${hasAnyData}`);
+                    
+                  } catch (error) {
+                    console.error('DASHBOARD - Debug check failed:', error);
+                    toast.error('Debug check failed - see console for details');
+                  }
+                }
+              }}
+              className="flex items-center gap-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-800"
+            >
+              <Info className="h-4 w-4" />
+              <span className="hidden sm:inline">Debug</span>
+            </Button>
+          )}
+          
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => {
+              console.log('=== DASHBOARD: Manual refresh triggered ===');
+              window.location.reload();
+            }}
+            className="flex items-center gap-1"
+          >
+            <RefreshCcw className="h-4 w-4" />
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
+          
           <Button onClick={() => navigate('/app/analysis')} className="flex-1 sm:flex-none bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-md hover:shadow-lg transition-all">
             <Mic className="mr-2 h-4 w-4" /> New Voice Analysis
           </Button>

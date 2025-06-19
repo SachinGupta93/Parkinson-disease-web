@@ -2,7 +2,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useContext } from "react";
 import { 
   ParkinsonsFeatures, 
   ModelType, 
@@ -12,6 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { saveAssessment } from "@/utils/assessmentHistory";
+import { UserContext } from "@/App";
 import FeatureImportance from "@/components/FeatureImportance";
 import ModelComparison from "@/components/ModelComparison";
 import { VoiceAnalysisChart } from "@/components/VoiceAnalysisChart";
@@ -63,6 +64,7 @@ interface ResultsState {
 const Results = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useContext(UserContext);
   const state = location.state as ResultsState | undefined;
   const [riskScore, setRiskScore] = useState<number>(0);
   const [probability, setProbability] = useState<number>(0);
@@ -143,6 +145,68 @@ const Results = () => {
           });
           console.log("Results.tsx - Setting clinical model result:", clinicalModelResult);
           setAllModelResults([clinicalModelResult]);
+          
+          // Save clinical assessment to Firebase
+          if (state.formData) {
+            const features = {
+              mdvpFo: 0, // Clinical assessments don't have voice features
+              mdvpFhi: 0,
+              mdvpFlo: 0,
+              mdvpJitter: 0,
+              mdvpJitterAbs: 0,
+              mdvpRap: 0,
+              mdvpPpq: 0,
+              jitterDdp: 0,
+              mdvpShimmer: 0,
+              mdvpShimmerDb: 0,
+              shimmerApq3: 0,
+              shimmerApq5: 0,
+              mdvpApu: 0,
+              shimmerDda: 0,
+              nhr: 0,
+              hnr: 0,
+              rpde: 0,
+              dfa: 0,
+              spread1: 0,
+              spread2: 0,
+              d2: 0,
+              ppe: 0,
+              // Add clinical symptoms as features
+              tremor: state.formData.tremor ? 1 : 0,
+              rigidity: state.formData.rigidity ? 1 : 0,
+              bradykinesia: state.formData.bradykinesia ? 1 : 0,
+              posturalInstability: state.formData.posturalInstability ? 1 : 0,
+              voiceChanges: state.formData.voiceChanges ? 1 : 0,
+              handwriting: state.formData.handwriting ? 1 : 0
+            };
+            
+            const saveResult = {
+              riskScore: isNaN(risk_score) ? 0 : risk_score,
+              probability: isNaN(probability) ? 0 : probability,
+              status: isNaN(prediction) ? 0 : prediction,
+              modelUsed: 'clinical_assessment'
+            };
+            
+            const allModelResultsForSave = [{
+              modelName: 'clinical_assessment',
+              riskScore: isNaN(risk_score) ? 0 : risk_score,
+              probability: isNaN(probability) ? 0 : probability,
+              confidence: isNaN(probability) ? 0 : probability
+            }];
+            
+            console.log("Results.tsx - Saving clinical assessment for user:", user?.id);
+            console.log("Results.tsx - Clinical assessment data:", { features, saveResult, allModelResultsForSave });
+            
+            try {
+              await saveAssessment(features, saveResult, allModelResultsForSave, user?.id);
+              console.log("Results.tsx - Clinical assessment saved successfully");
+              toast.success("Assessment saved successfully!");
+            } catch (error) {
+              console.error("Results.tsx - Error saving clinical assessment:", error);
+              toast.error("Failed to save assessment. Please try again.");
+            }
+          }
+          
           setIsLoading(false);
         } else {
           // Get prediction from ML model
@@ -197,16 +261,8 @@ const Results = () => {
             setConfidence(ensembleResult.confidence);
             setFeatureImportance(multiModelResult.feature_importance || {});
             
-            // Save assessment with correct parameters
-            const saveResult = {
-              riskScore: ensembleResult.risk_score,
-              probability: ensembleResult.probability,
-              status: ensembleResult.prediction,
-              modelUsed: modelUsed.toString()
-            };
-            
-            await saveAssessment(features, saveResult);
-              // Get all model results for comparison
+            // Get all model results for comparison first
+            let allModelResultsForSave: any[] = [];
             if (multiModelResult && multiModelResult.models) {
               // Convert the model results to the format expected by the UI
               const modelResults = Object.entries(multiModelResult.models).map(([modelName, result]) => {
@@ -222,6 +278,34 @@ const Results = () => {
               
               console.log("Results.tsx - Setting voice analysis model results:", modelResults);
               setAllModelResults(modelResults);
+              
+              // Convert to format expected by saveAssessment
+              allModelResultsForSave = modelResults.map(result => ({
+                modelName: result.modelName,
+                riskScore: result.riskScore,
+                probability: result.probability,
+                confidence: result.confidence
+              }));
+            }
+            
+            // Save assessment with correct parameters including user ID
+            const saveResult = {
+              riskScore: ensembleResult.risk_score,
+              probability: ensembleResult.probability,
+              status: ensembleResult.prediction,
+              modelUsed: modelUsed.toString()
+            };
+            
+            console.log("Results.tsx - Saving assessment for user:", user?.id);
+            console.log("Results.tsx - Assessment data:", { features, saveResult, allModelResultsForSave });
+            
+            try {
+              await saveAssessment(features, saveResult, allModelResultsForSave, user?.id);
+              console.log("Results.tsx - Assessment saved successfully");
+              toast.success("Assessment saved successfully!");
+            } catch (error) {
+              console.error("Results.tsx - Error saving assessment:", error);
+              toast.error("Failed to save assessment. Please try again.");
             }
             
             setIsLoading(false);

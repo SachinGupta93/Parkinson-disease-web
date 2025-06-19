@@ -14,13 +14,16 @@ import { ref, set, get, child } from "firebase/database";
 import { app, database, auth } from "@/lib/firebase";
 import { toast } from "sonner";
 
-// Use either the imported auth or create a new one if the import failed
-const firebaseAuth = auth || getAuth();
-// Initialize Google Auth Provider
-const googleProvider = new GoogleAuthProvider();
-googleProvider.setCustomParameters({
-  prompt: 'select_account'
-});
+// Use the imported auth only if Firebase is properly initialized
+const firebaseAuth = auth;
+// Initialize Google Auth Provider only if auth is available
+let googleProvider = null;
+if (firebaseAuth) {
+  googleProvider = new GoogleAuthProvider();
+  googleProvider.setCustomParameters({
+    prompt: 'select_account'
+  });
+}
 
 export interface UserData {
   id: string;
@@ -31,6 +34,10 @@ export interface UserData {
 
 // Google sign in function
 export const signInWithGoogle = async (): Promise<UserData> => {
+  if (!firebaseAuth || !googleProvider) {
+    throw new Error("Firebase authentication is not available. Please configure Firebase properly.");
+  }
+  
   try {
     const result = await signInWithPopup(firebaseAuth, googleProvider);
     const user = result.user;
@@ -70,9 +77,13 @@ export const signInWithGoogle = async (): Promise<UserData> => {
 };
 
 export const createUser = async (name: string, email: string, password: string): Promise<UserData> => {
+  if (!firebaseAuth || !database) {
+    throw new Error("Firebase authentication is not available. Please configure Firebase properly.");
+  }
+  
   try {
     // Create user with email and password
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const userCredential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
     const user = userCredential.user;
     
     // Update profile with name
@@ -102,8 +113,12 @@ export const createUser = async (name: string, email: string, password: string):
 };
 
 export const signIn = async (email: string, password: string): Promise<UserData> => {
+  if (!firebaseAuth || !database) {
+    throw new Error("Firebase authentication is not available. Please configure Firebase properly.");
+  }
+  
   try {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const userCredential = await signInWithEmailAndPassword(firebaseAuth, email, password);
     const user = userCredential.user;
     
     // Update last login time
@@ -163,8 +178,13 @@ export const signIn = async (email: string, password: string): Promise<UserData>
 };
 
 export const signOut = async (): Promise<void> => {
+  if (!firebaseAuth) {
+    console.warn("Firebase authentication is not available.");
+    return;
+  }
+  
   try {
-    await firebaseSignOut(auth);
+    await firebaseSignOut(firebaseAuth);
   } catch (error: any) {
     console.error("Error signing out:", error);
     throw new Error(error.message || "Failed to sign out");
@@ -172,9 +192,17 @@ export const signOut = async (): Promise<void> => {
 };
 
 export const getCurrentUser = (): User | null => {
-  return auth.currentUser;
+  if (!firebaseAuth) {
+    return null;
+  }
+  return firebaseAuth.currentUser;
 };
 
 export const onAuthStateChange = (callback: (user: User | null) => void) => {
-  return onAuthStateChanged(auth, callback);
+  if (!firebaseAuth) {
+    // Call callback with null user if Firebase is not available
+    callback(null);
+    return () => {}; // Return empty unsubscribe function
+  }
+  return onAuthStateChanged(firebaseAuth, callback);
 };

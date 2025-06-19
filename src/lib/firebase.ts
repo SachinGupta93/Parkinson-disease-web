@@ -9,8 +9,8 @@ const USE_FIRESTORE = false; // Set to false since you're using Realtime Databas
 
 // Default configuration for testing/development - DO NOT use in production
 const defaultConfig = {
-   // Replace the hardcoded API key with environment variable
-  apiKey: import.meta.env.VITE_GEMINI_API_KEY,
+  // Use a valid demo Firebase API key for development
+  apiKey: "AIzaSyDemo-Key-For-Development-Only-Replace-In-Production",
   authDomain: "parkinson-disease-1deeb.firebaseapp.com",
   projectId: "parkinson-disease-1deeb",
   storageBucket: "parkinson-disease-1deeb.appspot.com",
@@ -19,56 +19,72 @@ const defaultConfig = {
   databaseURL: "https://parkinson-disease-1deeb-default-rtdb.firebaseio.com"
 };
 
-// Firebase configuration - use environment variables or fallback to defaults
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || defaultConfig.apiKey,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || defaultConfig.authDomain,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || defaultConfig.projectId,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || defaultConfig.storageBucket,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || defaultConfig.messagingSenderId,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || defaultConfig.appId,
-  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || defaultConfig.databaseURL,
+// Check if Firebase environment variables are properly configured
+const hasValidFirebaseConfig = () => {
+  const requiredVars = [
+    'VITE_FIREBASE_API_KEY',
+    'VITE_FIREBASE_AUTH_DOMAIN',
+    'VITE_FIREBASE_PROJECT_ID'
+  ];
+  
+  return requiredVars.every(varName => {
+    const value = import.meta.env[varName];
+    return value && value.length > 0 && !value.includes('your-') && !value.includes('demo');
+  });
 };
 
-// Log configuration state without exposing sensitive values
-console.log("Firebase configuration state:", {
-  apiKey: firebaseConfig.apiKey ? "Set" : "Missing",
-  authDomain: firebaseConfig.authDomain ? "Set" : "Missing",
-  projectId: firebaseConfig.projectId ? "Set" : "Missing",
-  storageBucket: firebaseConfig.storageBucket ? "Set" : "Missing",
-  messagingSenderId: firebaseConfig.messagingSenderId ? "Set" : "Missing",
-  appId: firebaseConfig.appId ? "Set" : "Missing",
-  databaseURL: firebaseConfig.databaseURL ? "Set" : "Missing"
-});
+// Firebase configuration - use environment variables or disable Firebase
+const firebaseConfig = hasValidFirebaseConfig() ? {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL,
+} : null;
 
 // Initialize Firebase
-let app;
-let database;
-let auth;
-let realtimeDb;
+let app = null;
+let database = null;
+let auth = null;
+let realtimeDb = null;
 let db = null;
 
-try {
-  app = initializeApp(firebaseConfig);
-  console.log("Firebase initialized successfully");
-  
-  // Initialize Firebase services
-  database = getDatabase(app);
-  auth = getAuth(app);
-  realtimeDb = database; // Alias for compatibility
-  
-  // Show toast message for demo mode if using default config
-  if (firebaseConfig.apiKey === defaultConfig.apiKey) {
-    setTimeout(() => {
-      toast.info("Using Firebase in demo mode. Some features are limited.", {
-        duration: 6000,
-        description: "Set up your own Firebase project for full functionality."
-      });
-    }, 2000);
+if (firebaseConfig) {
+  // Log configuration state without exposing sensitive values
+  console.log("Firebase configuration state:", {
+    apiKey: firebaseConfig.apiKey ? "Set" : "Missing",
+    authDomain: firebaseConfig.authDomain ? "Set" : "Missing",
+    projectId: firebaseConfig.projectId ? "Set" : "Missing",
+    storageBucket: firebaseConfig.storageBucket ? "Set" : "Missing",
+    messagingSenderId: firebaseConfig.messagingSenderId ? "Set" : "Missing",
+    appId: firebaseConfig.appId ? "Set" : "Missing",
+    databaseURL: firebaseConfig.databaseURL ? "Set" : "Missing"
+  });
+
+  try {
+    app = initializeApp(firebaseConfig);
+    console.log("Firebase initialized successfully");
+    
+    // Initialize Firebase services
+    database = getDatabase(app);
+    auth = getAuth(app);
+    realtimeDb = database; // Alias for compatibility
+    
+  } catch (error) {
+    console.error("Firebase initialization failed:", error);
+    // Don't show error toast immediately, let the app handle offline mode gracefully
   }
-} catch (error) {
-  console.error("Firebase initialization failed:", error);
-  toast.error("Firebase initialization failed. Using offline mode.");
+} else {
+  console.log("Firebase configuration not available. Running in offline mode.");
+  // Show info message about offline mode
+  setTimeout(() => {
+    toast.info("Running in offline mode. Some features may be limited.", {
+      duration: 4000,
+      description: "Configure Firebase environment variables for full functionality."
+    });
+  }, 2000);
 }
 
 // Initialize Firestore only if needed (which it's not in this application)

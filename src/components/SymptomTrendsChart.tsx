@@ -16,10 +16,16 @@ interface SymptomTrendsChartProps {
   assessments: Assessment[];
 }
 
-const SymptomTrendsChart: React.FC<SymptomTrendsChartProps> = ({ assessments }) => {
+const SymptomTrendsChart: React.FC<SymptomTrendsChartProps> = ({ assessments = [] }) => {
   // Process data for visualization
   const processData = () => {
     console.log('SymptomTrendsChart - Input assessments:', assessments);
+    
+    // Early return if no assessments
+    if (!assessments || !Array.isArray(assessments) || assessments.length === 0) {
+      console.log('SymptomTrendsChart - No assessments available, returning empty data');
+      return [];
+    }
     
     // Sort assessments by date (oldest first)
     const sortedAssessments = [...assessments].sort((a, b) => 
@@ -29,7 +35,13 @@ const SymptomTrendsChart: React.FC<SymptomTrendsChartProps> = ({ assessments }) 
     
     // Map to charting data format
     const chartData = sortedAssessments.map(assessment => {
-      // Get all symptom values
+      // Safety check for assessment structure
+      if (!assessment || !assessment.features || !assessment.result || !assessment.date) {
+        console.warn('SymptomTrendsChart - Invalid assessment data:', assessment);
+        return null;
+      }
+      
+      // Get all symptom values with fallbacks
       const { tremor, rigidity, bradykinesia, posturalInstability, voiceChanges, handwriting } = assessment.features;
       
       return {
@@ -40,9 +52,9 @@ const SymptomTrendsChart: React.FC<SymptomTrendsChartProps> = ({ assessments }) 
         posturalInstability: posturalInstability || 0,
         voiceChanges: voiceChanges || 0,
         handwriting: handwriting || 0,
-        riskScore: assessment.result.riskScore,
+        riskScore: assessment.result.riskScore || 0,
       };
-    });
+    }).filter(Boolean); // Remove null entries
     
     console.log('SymptomTrendsChart - Processed chart data:', chartData);
     return chartData;

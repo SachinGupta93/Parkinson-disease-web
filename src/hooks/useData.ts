@@ -41,10 +41,19 @@ export const useData = (userId: string) => {
         console.log(`useData: Fetching voice history for user ${userId}`);
         const voiceData = await getUserVoiceHistory(userId);
         console.log(`useData: Received voice history:`, voiceData);
-        setVoiceHistory(voiceData);
-        hasLoadedSomeData = true;
+        console.log(`useData: Voice history length:`, voiceData?.length || 0);
+        
+        if (voiceData && voiceData.length > 0) {
+          console.log(`useData: First voice history entry:`, voiceData[0]);
+          setVoiceHistory(voiceData);
+          hasLoadedSomeData = true;
+        } else {
+          console.log(`useData: No voice history data found for user ${userId}`);
+          setVoiceHistory([]);
+        }
       } catch (voiceErr: any) {
         console.error("Error loading voice history:", voiceErr);
+        setVoiceHistory([]);
       }
       
       try {

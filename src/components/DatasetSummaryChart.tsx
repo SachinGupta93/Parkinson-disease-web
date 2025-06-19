@@ -16,10 +16,21 @@ interface DatasetSummaryChartProps {
   assessments: Assessment[];
 }
 
-const DatasetSummaryChart: React.FC<DatasetSummaryChartProps> = ({ assessments }) => {
+const DatasetSummaryChart: React.FC<DatasetSummaryChartProps> = ({ assessments = [] }) => {
   // Process data for visualization
   const processData = () => {
     console.log('DatasetSummaryChart - Input assessments:', assessments);
+    
+    // Early return if no assessments
+    if (!assessments || !Array.isArray(assessments) || assessments.length === 0) {
+      console.log('DatasetSummaryChart - No assessments available, returning empty data');
+      return [
+        { name: 'Low Risk', value: 0 },
+        { name: 'Moderate Risk', value: 0 },
+        { name: 'High Risk', value: 0 },
+        { name: 'Very High Risk', value: 0 },
+      ];
+    }
     
     // Count assessments by risk category
     const riskCounts = {
@@ -30,6 +41,12 @@ const DatasetSummaryChart: React.FC<DatasetSummaryChartProps> = ({ assessments }
     };
 
     assessments.forEach(assessment => {
+      // Safety check for assessment structure
+      if (!assessment || !assessment.result || typeof assessment.result.riskScore !== 'number') {
+        console.warn('DatasetSummaryChart - Invalid assessment data:', assessment);
+        return;
+      }
+      
       const riskScore = assessment.result.riskScore;
       console.log(`DatasetSummaryChart - Assessment risk score: ${riskScore}`);
       

@@ -49,7 +49,13 @@ export const saveAssessment = async (
   // If user is logged in, save to Firebase
   if (userId) {
     try {
-      await set(ref(database, `users/${userId}/voiceHistory/${assessmentId}`), {
+      console.log("saveAssessment: Attempting to save to Firebase for user:", userId);
+      console.log("saveAssessment: Assessment ID:", assessmentId);
+      console.log("saveAssessment: Features:", features);
+      console.log("saveAssessment: Result:", result);
+      console.log("saveAssessment: All model results:", allModelResults);
+      
+      const firebaseData = {
         timestamp: now.getTime(),
         prediction: {
           status: result.status,
@@ -68,13 +74,32 @@ export const saveAssessment = async (
         },
         features: features,
         recommendations: []
-      });
+      };
+      
+      console.log("saveAssessment: Firebase data to save:", firebaseData);
+      console.log("saveAssessment: Firebase path:", `users/${userId}/voiceHistory/${assessmentId}`);
+      
+      await set(ref(database, `users/${userId}/voiceHistory/${assessmentId}`), firebaseData);
+      console.log("saveAssessment: Successfully saved to Firebase!");
+      
     } catch (error) {
-      console.error("Failed to save assessment to Firebase:", error);
+      console.error("saveAssessment: Failed to save assessment to Firebase:", error);
+      console.error("saveAssessment: Error details:", {
+        name: error.name,
+        message: error.message,
+        code: error.code,
+        stack: error.stack
+      });
+      
       // Fall back to local storage if Firebase fails
+      console.log("saveAssessment: Falling back to local storage");
       saveToLocalStorage(newAssessment);
+      
+      // Re-throw the error so the calling code knows it failed
+      throw error;
     }
   } else {
+    console.log("saveAssessment: No user ID provided, saving to local storage");
     // Save to local storage for guests
     saveToLocalStorage(newAssessment);
   }
@@ -97,13 +122,17 @@ export const getAssessmentHistory = async (userId?: string): Promise<Assessment[
   }
   
   try {
-    console.log(`Fetching assessment history from Firebase for user: ${userId}`);
+    console.log(`getAssessmentHistory: Fetching assessment history from Firebase for user: ${userId}`);
+    console.log(`getAssessmentHistory: Firebase path: users/${userId}/voiceHistory`);
+    
     const snapshot = await get(ref(database, `users/${userId}/voiceHistory`));
+    console.log(`getAssessmentHistory: Snapshot exists: ${snapshot.exists()}`);
     
     if (snapshot.exists()) {
-      console.log('Firebase snapshot exists, processing data');
+      console.log('getAssessmentHistory: Firebase snapshot exists, processing data');
       const data = snapshot.val();
-      console.log('Raw Firebase data:', data);
+      console.log('getAssessmentHistory: Raw Firebase data:', data);
+      console.log('getAssessmentHistory: Data keys:', Object.keys(data));
       
       const processedData = Object.entries(data).map(([id, assessmentData]: [string, any]) => ({
         id,

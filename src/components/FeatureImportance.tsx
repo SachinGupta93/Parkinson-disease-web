@@ -187,9 +187,26 @@ const formatFeatureName = (name: string): string => {
     .replace(/Ppe/i, 'PPE');
 };
 
-const FeatureImportance: React.FC<FeatureImportanceProps> = ({ featureImportance, height = 400 }) => {
+const FeatureImportance: React.FC<FeatureImportanceProps> = ({ featureImportance = {}, height = 400 }) => {
+  // Early return if no feature importance data
+  if (!featureImportance || Object.keys(featureImportance).length === 0) {
+    return (
+      <Card className="w-full">
+        <CardHeader>
+          <CardTitle>Feature Importance</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-center h-32">
+            <p className="text-muted-foreground">No feature importance data available</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   // Sort features by importance (descending)
   const sortedFeatures = Object.entries(featureImportance)
+    .filter(([, value]) => typeof value === 'number' && !isNaN(value))
     .sort(([, valueA], [, valueB]) => valueB - valueA);
   
   // Import icons based on feature descriptions
