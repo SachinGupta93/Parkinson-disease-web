@@ -413,8 +413,16 @@ async def predict_all_models(request_data: PredictionRequest):
             "colors": []
         }
         
+        # Log available models first
+        available_models = [name for name, model in models.items() if model is not None]
+        print(f"[INFO] Available models for prediction: {available_models}")
+        
         # Process each loaded model
         for model_name, model in models.items():
+            if model is None:
+                print(f"[WARNING] {model_name} model is None, skipping...")
+                continue
+                
             print(f"[INFO] Running prediction with {model_name} model...")
             
             try:

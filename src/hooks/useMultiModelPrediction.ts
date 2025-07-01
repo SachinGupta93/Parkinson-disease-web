@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { apiService, CompleteVoiceData, MultiModelPredictionResponse, ClinicalAssessmentRequest, VoiceFeatures } from '../services/api';
+import { saveMultiModelPrediction, MultiModelPredictionData } from '../services/dataService';
+import { useAuth } from './useAuth';
 
 export function useMultiModelPrediction() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<MultiModelPredictionResponse | null>(null);
+  const { user } = useAuth();
 
   const predictWithAllModels = async (voiceData: CompleteVoiceData) => {
     setLoading(true);
@@ -52,6 +55,78 @@ export function useMultiModelPrediction() {
       
       // Update the state with the results
       setResults(predictionResults);
+      
+      // Save the prediction results to Firebase if user is authenticated
+      if (user?.uid && predictionResults) {
+        try {
+          // Process the prediction results to create the data structure
+          const modelResults: { [modelName: string]: any } = {};
+          let totalModels = 0;
+          let totalProbability = 0;
+          let consensusPrediction = 0;
+          let agreementCount = 0;
+          
+          // Extract model results from the prediction response
+          const modelNames = ['random_forest', 'svm', 'neural_network', 'extra_trees', 'adaboost', 'gradient_boosting', 'ensemble'];
+          
+          modelNames.forEach(modelName => {
+            if (predictionResults[modelName]) {
+              const modelResult = predictionResults[modelName];
+              if (modelResult && typeof modelResult === 'object' && 'prediction' in modelResult) {
+                modelResults[modelName] = {
+                  prediction: modelResult.prediction || 0,
+                  probability: modelResult.probability || 0,
+                  confidence: modelResult.confidence || 0,
+                  feature_importance: modelResult.feature_importance || {}
+                };
+                totalModels++;
+                totalProbability += modelResult.probability || 0;
+                if (modelResult.prediction === 1) agreementCount++;
+              }
+            }
+          });
+          
+          // Calculate summary statistics
+          consensusPrediction = agreementCount > totalModels / 2 ? 1 : 0;
+          const averageProbability = totalModels > 0 ? totalProbability / totalModels : 0;
+          const agreementRatio = totalModels > 0 ? agreementCount / totalModels : 0;
+          
+          // Create the data structure for saving
+          const multiModelData: Omit<MultiModelPredictionData, 'userId'> = {
+            timestamp: new Date(),
+            voiceFeatures: {
+              mdvpFo: voiceData.MDVP_Fo,
+              mdvpFhi: voiceData.MDVP_Fhi,
+              mdvpFlo: voiceData.MDVP_Flo,
+              mdvpJitter: voiceData.MDVP_Jitter,
+              mdvpShimmer: voiceData.MDVP_Shimmer,
+              nhr: voiceData.NHR,
+              hnr: voiceData.HNR,
+              rpde: voiceData.RPDE,
+              dfa: voiceData.DFA,
+              spread1: voiceData.spread1,
+              spread2: voiceData.spread2,
+              d2: voiceData.D2,
+              ppe: voiceData.PPE
+            },
+            modelResults,
+            summary: {
+              consensus_prediction: consensusPrediction,
+              average_probability: averageProbability,
+              total_models: totalModels,
+              agreement_ratio: agreementRatio
+            }
+          };
+          
+          // Save to Firebase
+          await saveMultiModelPrediction(user.uid, multiModelData);
+          console.log('Multi-model prediction results saved to Firebase');
+        } catch (saveError) {
+          console.error('Error saving multi-model prediction to Firebase:', saveError);
+          // Don't throw error here, just log it as saving is not critical for the prediction
+        }
+      }
+      
       return predictionResults;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';

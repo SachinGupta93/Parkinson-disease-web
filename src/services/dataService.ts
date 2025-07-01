@@ -34,19 +34,39 @@ export const saveVoiceAnalysis = async (userId: string, data: Omit<VoiceAnalysis
       throw new Error('User ID is required to save voice analysis data');
     }
     
+    if (!realtimeDb) {
+      throw new Error('Firebase database is not initialized');
+    }
+    
     // Generate a unique ID for the entry
     const timestamp = Date.now();
     const uniqueId = `va_${timestamp}_${Math.random().toString(36).substring(2, 10)}`;
     
-    // Save to Realtime Database
-    const realtimeRef = ref(realtimeDb, `users/${userId}/voiceHistory/${uniqueId}`);
-    await set(realtimeRef, {
+    // Validate data before saving to avoid zero values
+    const validatedData = {
       id: uniqueId,
       userId,
-      ...data,
-      timestamp: data.timestamp.getTime()
-    });
+      timestamp: data.timestamp.getTime(),
+      voiceMetrics: {
+        pitch: typeof data.voiceMetrics.pitch === 'number' && !isNaN(data.voiceMetrics.pitch) ? data.voiceMetrics.pitch : 0,
+        amplitude: typeof data.voiceMetrics.amplitude === 'number' && !isNaN(data.voiceMetrics.amplitude) ? data.voiceMetrics.amplitude : 0,
+        frequency: typeof data.voiceMetrics.frequency === 'number' && !isNaN(data.voiceMetrics.frequency) ? data.voiceMetrics.frequency : 0,
+        tremor: typeof data.voiceMetrics.tremor === 'number' && !isNaN(data.voiceMetrics.tremor) ? data.voiceMetrics.tremor : 0,
+      },
+      analysisResults: {
+        severity: typeof data.analysisResults.severity === 'number' && !isNaN(data.analysisResults.severity) ? data.analysisResults.severity : 0,
+        confidence: typeof data.analysisResults.confidence === 'number' && !isNaN(data.analysisResults.confidence) ? data.analysisResults.confidence : 0,
+        recommendations: Array.isArray(data.analysisResults.recommendations) ? data.analysisResults.recommendations : [],
+        model_predictions: data.analysisResults.model_predictions || {},
+        model_probabilities: data.analysisResults.model_probabilities || {}
+      }
+    };
     
+    // Save to Realtime Database
+    const realtimeRef = ref(realtimeDb, `users/${userId}/voiceHistory/${uniqueId}`);
+    await set(realtimeRef, validatedData);
+    
+    console.log('Voice analysis saved successfully:', uniqueId);
     return uniqueId;
   } catch (error: any) {
     console.error("Error saving voice analysis:", error);
@@ -303,6 +323,128 @@ export const getUserHistory = async (userId: string): Promise<UserHistory[]> => 
     );
   } catch (error: any) {
     console.error("Error getting user history:", error);
+    return [];
+  }
+};
+
+// Interface for multi-model predictions
+export interface MultiModelPredictionData {
+  userId: string;
+  timestamp: Date;
+  voiceFeatures: {
+    [key: string]: number;
+  };
+  modelResults: {
+    [modelName: string]: {
+      prediction: number;
+      probability: number;
+      confidence?: number;
+      feature_importance?: Record<string, number>;
+    };
+  };
+  summary: {
+    consensus_prediction: number;
+    average_probability: number;
+    total_models: number;
+    agreement_ratio: number;
+  };
+}
+
+// Save multi-model prediction results
+export const saveMultiModelPrediction = async (
+  userId: string, 
+  data: Omit<MultiModelPredictionData, 'userId'>
+): Promise<string> => {
+  try {
+    if (!userId) {
+      throw new Error('User ID is required to save multi-model prediction data');
+    }
+    
+    if (!realtimeDb) {
+      throw new Error('Firebase database is not initialized');
+    }
+    
+    // Generate a unique ID for the entry
+    const timestamp = Date.now();
+    const uniqueId = `mmp_${timestamp}_${Math.random().toString(36).substring(2, 10)}`;
+    
+    // Validate and clean the data
+    const validatedData = {
+      id: uniqueId,
+      userId,
+      timestamp: data.timestamp.getTime(),
+      voiceFeatures: data.voiceFeatures || {},
+      modelResults: data.modelResults || {},
+      summary: {
+        consensus_prediction: typeof data.summary?.consensus_prediction === 'number' ? data.summary.consensus_prediction : 0,
+        average_probability: typeof data.summary?.average_probability === 'number' ? data.summary.average_probability : 0,
+        total_models: typeof data.summary?.total_models === 'number' ? data.summary.total_models : 0,
+        agreement_ratio: typeof data.summary?.agreement_ratio === 'number' ? data.summary.agreement_ratio : 0,
+      }
+    };
+    
+    // Save to multiple paths for better data organization
+    const multiModelRef = ref(realtimeDb, `users/${userId}/multiModelPredictions/${uniqueId}`);
+    const modelResultsRef = ref(realtimeDb, `modelResults/${userId}/${uniqueId}`);
+    
+    // Save to both locations
+    await Promise.all([
+      set(multiModelRef, validatedData),
+      set(modelResultsRef, validatedData)
+    ]);
+    
+    console.log('Multi-model prediction saved successfully:', uniqueId);
+    return uniqueId;
+  } catch (error: any) {
+    console.error("Error saving multi-model prediction:", error);
+    throw new Error(`Failed to save multi-model prediction: ${error.message}`);
+  }
+};
+
+// Get user's multi-model predictions
+export const getUserMultiModelPredictions = async (userId: string): Promise<MultiModelPredictionData[]> => {
+  try {
+    if (!userId) {
+      console.log("getUserMultiModelPredictions: No userId provided");
+      return [];
+    }
+    
+    console.log(`getUserMultiModelPredictions: Fetching data for user ${userId}`);
+    const predictionsRef = ref(realtimeDb, `users/${userId}/multiModelPredictions`);
+    const snapshot = await get(predictionsRef);
+    
+    if (!snapshot.exists()) {
+      console.log(`getUserMultiModelPredictions: No data found for user ${userId}`);
+      return [];
+    }
+    
+    const data = snapshot.val() as Record<string, any>;
+    console.log(`getUserMultiModelPredictions: Raw data:`, data);
+    
+    const predictionsArray: MultiModelPredictionData[] = Object.keys(data).map(key => {
+      const entry = data[key];
+      
+      return {
+        userId,
+        timestamp: new Date(entry.timestamp),
+        voiceFeatures: entry.voiceFeatures || {},
+        modelResults: entry.modelResults || {},
+        summary: {
+          consensus_prediction: entry.summary?.consensus_prediction || 0,
+          average_probability: entry.summary?.average_probability || 0,
+          total_models: entry.summary?.total_models || 0,
+          agreement_ratio: entry.summary?.agreement_ratio || 0,
+        }
+      };
+    });
+    
+    console.log(`getUserMultiModelPredictions: Processed ${predictionsArray.length} entries`);
+    
+    return predictionsArray.sort((a, b) => 
+      b.timestamp.getTime() - a.timestamp.getTime()
+    );
+  } catch (error: any) {
+    console.error("Error getting multi-model predictions:", error);
     return [];
   }
 };
