@@ -1,0 +1,340 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 50% 98%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --primary: 210 91% 60%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 20% 98%;
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 222 84% 5%;
+
+    --radius: 0.5rem;
+
+    /* Chart colors for light mode */
+    --chart-1: 210 91% 60%;
+    --chart-2: 280 70% 60%;
+    --chart-3: 150 60% 50%;
+    --chart-4: 30 90% 60%;
+    --chart-5: 340 80% 65%;
+
+    /* Neon colors */
+    --neon-blue: 210 100% 60%;
+    --neon-purple: 280 100% 65%;
+    --neon-pink: 320 100% 70%;
+    --neon-green: 150 100% 60%;
+    --neon-yellow: 60 100% 65%;
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 210 30% 30%;
+    --sidebar-primary: 210 91% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 40% 96%;
+    --sidebar-accent-foreground: 210 30% 30%;
+    --sidebar-border: 210 40% 90%;
+    --sidebar-ring: 217 91% 60%;
+  }
+
+  .dark {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 210 91% 60%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 217 33% 18%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217 33% 18%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 217 33% 18%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217 33% 18%;
+    --input: 217 33% 18%;
+    --ring: 213 27% 84%;
+
+    /* Chart colors for dark mode */
+    --chart-1: 210 91% 70%;
+    --chart-2: 280 80% 70%;
+    --chart-3: 150 70% 60%;
+    --chart-4: 30 100% 70%;
+    --chart-5: 340 90% 75%;
+
+    /* Neon colors for dark mode - brighter for better visibility */
+    --neon-blue: 210 100% 70%;
+    --neon-purple: 280 100% 75%;
+    --neon-pink: 320 100% 80%;
+    --neon-green: 150 100% 70%;
+    --neon-yellow: 60 100% 75%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-size: 16px;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold;
+  }
+
+  h1 {
+    @apply text-3xl md:text-4xl;
+  }
+
+  h2 {
+    @apply text-2xl md:text-3xl;
+  }
+  
+  button, a {
+    @apply focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2;
+  }
+}
+
+@layer components {
+  .page-container {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 animate-fade-in;
+  }
+  
+  .card-gradient {
+    @apply bg-gradient-to-br from-white to-secondary;
+  }
+
+  /* Enhanced gradient styles for cards */
+  .card-gradient-blue {
+    @apply bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-blue-900/30 dark:to-indigo-900/30;
+  }
+  
+  .card-gradient-purple {
+    @apply bg-gradient-to-br from-purple-50 to-fuchsia-100 dark:from-purple-900/30 dark:to-fuchsia-900/30;
+  }
+  
+  .card-gradient-green {
+    @apply bg-gradient-to-br from-green-50 to-emerald-100 dark:from-green-900/30 dark:to-emerald-900/30;
+  }
+  
+  .card-gradient-orange {
+    @apply bg-gradient-to-br from-orange-50 to-amber-100 dark:from-orange-900/30 dark:to-amber-900/30;
+  }
+
+  /* Neon effects */
+  .neon-text {
+    @apply text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-purple-600 dark:from-blue-400 dark:to-purple-400;
+    text-shadow: 0 0 5px rgba(79, 70, 229, 0.3);
+  }
+
+  .neon-blue-text {
+    @apply text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-500 dark:from-blue-300 dark:to-cyan-400;
+    text-shadow: 0 0 5px rgba(56, 189, 248, 0.5);
+  }
+  
+  .neon-purple-text {
+    @apply text-transparent bg-clip-text bg-gradient-to-r from-purple-500 to-pink-500 dark:from-purple-400 dark:to-pink-400;
+    text-shadow: 0 0 5px rgba(217, 70, 239, 0.5);
+  }
+  
+  .neon-green-text {
+    @apply text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-500 dark:from-green-300 dark:to-emerald-400;
+    text-shadow: 0 0 5px rgba(16, 185, 129, 0.5);
+  }
+  
+  .dark .neon-text,
+  .dark .neon-blue-text,
+  .dark .neon-purple-text,
+  .dark .neon-green-text {
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.7);
+  }
+
+  .neon-border {
+    box-shadow: 0 0 5px theme('colors.blue.400'), 
+                0 0 10px theme('colors.purple.500');
+  }
+
+  .neon-blue-border {
+    box-shadow: 0 0 5px theme('colors.blue.400'), 
+                0 0 10px theme('colors.cyan.500');
+  }
+  
+  .neon-purple-border {
+    box-shadow: 0 0 5px theme('colors.purple.500'), 
+                0 0 10px theme('colors.pink.500');
+  }
+  
+  .neon-green-border {
+    box-shadow: 0 0 5px theme('colors.green.400'), 
+                0 0 10px theme('colors.emerald.500');
+  }
+
+  /* Health-oriented color classes */
+  .health-low {
+    @apply text-green-500;
+  }
+  
+  .health-medium {
+    @apply text-amber-500;
+  }
+  
+  .health-high {
+    @apply text-red-500;
+  }
+
+  /* Chart container styles */
+  .chart-container {
+    @apply p-4 rounded-lg overflow-hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  }
+  
+  /* Gradient backgrounds */
+  .bg-gradient-neon-blue {
+    @apply bg-gradient-to-r from-blue-500 to-cyan-400;
+  }
+  
+  .bg-gradient-neon-purple {
+    @apply bg-gradient-to-r from-purple-500 to-pink-500;
+  }
+  
+  .bg-gradient-neon-green {
+    @apply bg-gradient-to-r from-green-400 to-emerald-500;
+  }
+  
+  /* Text gradient styles */
+  .text-gradient-primary {
+    @apply bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent;
+  }
+  
+  .text-gradient-secondary {
+    @apply bg-gradient-to-r from-cyan-500 to-blue-500 bg-clip-text text-transparent;
+  }
+  
+  .text-gradient-accent {
+    @apply bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent;
+  }
+}
+
+/* Animation for subtle elements */
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 3s infinite ease-in-out;
+}
+
+/* Fade in animation */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.5s ease-out forwards;
+}
+
+/* Glass effect */
+.glass-effect {
+  @apply backdrop-blur-md bg-white/20 dark:bg-black/20 border border-white/10 dark:border-white/5;
+}
+
+html {
+  background-color: hsl(var(--background));
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  @apply bg-background text-foreground font-sans;
+  font-size: 16px;
+}
+
+html.dark {
+  background-color: hsl(var(--background));
+  color-scheme: dark;
+}
+
+/* Chart container styles */
+.chart-container {
+  @apply bg-card text-card-foreground rounded-lg border border-border p-4;
+  min-height: 300px;
+}
+
+/* Card styles */
+.card {
+  @apply bg-card text-card-foreground rounded-lg border border-border;
+}
+
+/* Dark mode specific styles */
+html.dark .chart-container {
+  @apply bg-zinc-900/50 border-zinc-800;
+}
+
+html.dark .card,
+html.dark .bg-card {
+  @apply bg-zinc-900/50 border-zinc-800;
+}
+
+/* Chart text colors */
+.chart-text {
+  @apply text-foreground;
+}
+
+html.dark .chart-text {
+  @apply text-zinc-100;
+}
+
+/* Chart grid lines */
+.chart-grid {
+  @apply stroke-border;
+}
+
+html.dark .chart-grid {
+  @apply stroke-zinc-800;
+}
+
+/* Chart tooltip */
+.chart-tooltip {
+  @apply bg-card text-card-foreground border border-border rounded-lg shadow-lg p-3;
+}
+
+html.dark .chart-tooltip {
+  @apply bg-zinc-900 border-zinc-800;
+}

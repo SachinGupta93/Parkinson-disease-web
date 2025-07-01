@@ -1,0 +1,106 @@
+{
+  "rules": {
+    // Users can only access their own data
+    "users": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid",
+        ".validate": "auth != null",
+        
+        // User profile data
+        "profile": {
+          ".validate": "auth != null"
+        },
+        
+        // Voice history - user specific
+        "voiceHistory": {
+          "$voiceId": {
+            ".validate": "auth != null && newData.hasChildren(['timestamp', 'userId']) && newData.child('userId').val() === auth.uid"
+          }
+        },
+        
+        // Analysis history - user specific
+        "history": {
+          "$historyId": {
+            ".validate": "auth != null && newData.hasChildren(['timestamp', 'userId']) && newData.child('userId').val() === auth.uid"
+          }
+        },
+        
+        // Realtime data - user specific
+        "realtime": {
+          ".validate": "auth != null"
+        },
+        
+        // Assessment results - user specific
+        "assessments": {
+          "$assessmentId": {
+            ".validate": "auth != null && newData.hasChildren(['timestamp', 'userId']) && newData.child('userId').val() === auth.uid"
+          }
+        }
+      }
+    },
+    
+    // Graph data - user specific only
+    "graphs": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid",
+        ".validate": "auth != null"
+      }
+    },
+    
+    // Real-time voice metrics - user specific
+    "realtimeVoiceMetrics": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid",
+        ".validate": "auth != null"
+      }
+    },
+    
+    // ML model results - user specific
+    "modelResults": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid",
+        ".validate": "auth != null"
+      }
+    },
+    
+    // Multi-model predictions - user specific
+    "multiModelPredictions": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid",
+        ".validate": "auth != null"
+      }
+    },
+    
+    // Voice analysis results - user specific
+    "voiceAnalysis": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid",
+        ".validate": "auth != null"
+      }
+    },
+    
+    // System-wide settings (read-only for authenticated users)
+    "systemSettings": {
+      ".read": "auth != null",
+      ".write": false
+    },
+    
+    // Public health information (read-only)
+    "publicHealthInfo": {
+      ".read": true,
+      ".write": false
+    },
+    
+    // Deny access to everything else
+    "$other": {
+      ".read": false,
+      ".write": false
+    }
+  }
+}

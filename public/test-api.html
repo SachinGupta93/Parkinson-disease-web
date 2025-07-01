@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parkinson Insight Test Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #2563eb;
+        }
+        button {
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 8px 0;
+        }
+        pre {
+            background-color: #f1f5f9;
+            padding: 12px;
+            border-radius: 4px;
+            overflow: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Parkinson Insight API Test</h1>
+    <p>This page tests connectivity to the backend API</p>
+    
+    <div>
+        <button id="testApi">Test API Connection</button>
+        <button id="testSourceFiles">Test Source Files</button>
+    </div>
+    
+    <h2>Results:</h2>
+    <pre id="results">Click a button to run a test</pre>
+    
+    <script>
+        document.getElementById('testApi').addEventListener('click', async () => {
+            const resultEl = document.getElementById('results');
+            resultEl.textContent = 'Testing API connection...';
+            
+            try {
+                const response = await fetch('http://localhost:8000/api/v1/');
+                const data = await response.json();
+                resultEl.textContent = 'API Response: ' + JSON.stringify(data, null, 2);
+            } catch (error) {
+                resultEl.textContent = 'Error connecting to API: ' + error.message;
+            }
+        });
+        
+        document.getElementById('testSourceFiles').addEventListener('click', async () => {
+            const resultEl = document.getElementById('results');
+            resultEl.textContent = 'Testing source file loading...';
+            
+            try {
+                // Try to load the API file from the Vite dev server
+                const response = await fetch('/src/services/api.ts');
+                const status = response.status;
+                const statusText = response.statusText;
+                
+                if (response.ok) {
+                    const text = await response.text();
+                    const snippet = text.substring(0, 100) + '...';
+                    resultEl.textContent = `Source file loaded successfully!\nStatus: ${status} ${statusText}\nSnippet: ${snippet}`;
+                } else {
+                    resultEl.textContent = `Error loading source file: ${status} ${statusText}`;
+                }
+            } catch (error) {
+                resultEl.textContent = 'Error testing source files: ' + error.message;
+            }
+        });
+    </script>
+</body>
+</html>

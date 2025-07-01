@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="800px" height="600px" viewBox="0 0 800 600" version="1.1" xmlns="http://www.w3.org/2000/svg">
+    <g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <!-- Background Circle -->
+        <circle fill="#EEF2FF" cx="400" cy="300" r="250"/>
+        
+        <!-- Voice Waveform -->
+        <path d="M200,300 Q300,200 400,300 T600,300" stroke="#4F46E5" stroke-width="4" fill="none"/>
+        <path d="M200,320 Q300,220 400,320 T600,320" stroke="#4F46E5" stroke-width="4" fill="none" opacity="0.7"/>
+        <path d="M200,340 Q300,240 400,340 T600,340" stroke="#4F46E5" stroke-width="4" fill="none" opacity="0.5"/>
+        
+        <!-- Microphone Icon -->
+        <g transform="translate(350, 200)">
+            <rect x="0" y="0" width="100" height="160" rx="50" fill="#4F46E5" opacity="0.1"/>
+            <path d="M50,20 L50,100" stroke="#4F46E5" stroke-width="8" stroke-linecap="round"/>
+            <path d="M30,100 L70,100" stroke="#4F46E5" stroke-width="8" stroke-linecap="round"/>
+            <path d="M50,100 L50,140" stroke="#4F46E5" stroke-width="8" stroke-linecap="round"/>
+            <path d="M30,140 L70,140" stroke="#4F46E5" stroke-width="8" stroke-linecap="round"/>
+        </g>
+        
+        <!-- Decorative Elements -->
+        <circle cx="200" cy="200" r="20" fill="#4F46E5" opacity="0.2"/>
+        <circle cx="600" cy="400" r="30" fill="#4F46E5" opacity="0.2"/>
+        <circle cx="300" cy="450" r="15" fill="#4F46E5" opacity="0.2"/>
+        <circle cx="500" cy="150" r="25" fill="#4F46E5" opacity="0.2"/>
+        
+        <!-- Connection Lines -->
+        <path d="M200,200 L300,450" stroke="#4F46E5" stroke-width="2" opacity="0.1"/>
+        <path d="M500,150 L600,400" stroke="#4F46E5" stroke-width="2" opacity="0.1"/>
+        <path d="M200,200 L500,150" stroke="#4F46E5" stroke-width="2" opacity="0.1"/>
+        <path d="M300,450 L600,400" stroke="#4F46E5" stroke-width="2" opacity="0.1"/>
+    </g>
+</svg> 
