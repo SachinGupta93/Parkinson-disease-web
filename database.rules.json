@@ -36,6 +36,20 @@
           "$assessmentId": {
             ".validate": "auth != null && newData.hasChildren(['timestamp', 'userId']) && newData.child('userId').val() === auth.uid"
           }
+        },
+        
+        // Multi-model predictions - user specific
+        "multiModelPredictions": {
+          "$predictionId": {
+            ".validate": "auth != null && newData.hasChildren(['timestamp', 'userId']) && newData.child('userId').val() === auth.uid"
+          }
+        },
+        
+        // Multi-model predictions - user specific
+        "multiModelPredictions": {
+          "$predictionId": {
+            ".validate": "auth != null && newData.hasChildren(['timestamp', 'userId']) && newData.child('userId').val() === auth.uid"
+          }
         }
       }
     },

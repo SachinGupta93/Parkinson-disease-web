@@ -42,7 +42,12 @@ export const saveAssessment = async (
     date: now,
     features,
     result,
-    voiceRecorded: Boolean(features.mdvpFo && features.mdvpJitter),
+    voiceRecorded: Boolean(
+      (features.mdvpFo && features.mdvpFo > 0) || 
+      (features.mdvpJitter && features.mdvpJitter > 0) ||
+      (features.mdvpShimmer && features.mdvpShimmer > 0) ||
+      (features.hnr && features.hnr > 0)
+    ),
     allModelResults
   };
   
@@ -74,7 +79,17 @@ export const saveAssessment = async (
           pitch: features.mdvpFo || 0,
           jitter: features.mdvpJitter || 0,
           shimmer: features.mdvpShimmer || 0,
-          hnr: features.nhr || 0
+          hnr: features.hnr || 0,
+          nhr: features.nhr || 0,
+          // Additional voice features
+          mdvpFhi: features.mdvpFhi || 0,
+          mdvpFlo: features.mdvpFlo || 0,
+          rpde: features.rpde || 0,
+          dfa: features.dfa || 0,
+          spread1: features.spread1 || 0,
+          spread2: features.spread2 || 0,
+          d2: features.d2 || 0,
+          ppe: features.ppe || 0
         },
         features: features,
         recommendations: [],
@@ -147,29 +162,77 @@ export const getAssessmentHistory = async (userId?: string): Promise<Assessment[
       console.log('getAssessmentHistory: Raw Firebase data:', data);
       console.log('getAssessmentHistory: Data keys:', Object.keys(data));
       
-      const processedData = Object.entries(data).map(([id, assessmentData]: [string, any]) => ({
-        id,
-        date: new Date(assessmentData.timestamp),
-        features: assessmentData.features,
-        result: {
-          riskScore: assessmentData.prediction.severity,
-          probability: assessmentData.prediction.confidence,
-          status: assessmentData.prediction.status,
-          modelUsed: Object.keys(assessmentData.prediction.model_predictions || {})[0] || "ensemble"
-        },
-        voiceRecorded: Boolean(
-          assessmentData.voice_metrics?.pitch && 
-          assessmentData.voice_metrics?.jitter
-        ),
-        allModelResults: Object.entries(assessmentData.prediction.model_predictions || {}).map(
-          ([modelName, score]: [string, number]) => ({
-            modelName,
-            riskScore: score,
-            probability: 0,
-            confidence: 0
-          })
-        )
-      }));
+      const processedData = Object.entries(data).map(([id, assessmentData]: [string, any]) => {
+        // Determine if this assessment has voice data
+        const hasVoiceMetrics = Boolean(
+          (assessmentData.voice_metrics?.pitch && assessmentData.voice_metrics.pitch > 0) ||
+          (assessmentData.voice_metrics?.jitter && assessmentData.voice_metrics.jitter > 0) ||
+          (assessmentData.voice_metrics?.shimmer && assessmentData.voice_metrics.shimmer > 0) ||
+          (assessmentData.voice_metrics?.hnr && assessmentData.voice_metrics.hnr > 0) ||
+          (assessmentData.features?.mdvpFo && assessmentData.features.mdvpFo > 0) ||
+          (assessmentData.features?.mdvpJitter && assessmentData.features.mdvpJitter > 0)
+        );
+        
+        // Create proper features object based on available data
+        let features: any = {};
+        
+        if (hasVoiceMetrics && (assessmentData.voice_metrics || assessmentData.features)) {
+          // Use voice metrics if available, with fallback to features
+          features = {
+            mdvpFo: assessmentData.voice_metrics?.pitch || assessmentData.features?.mdvpFo || 0,
+            mdvpFhi: assessmentData.voice_metrics?.mdvpFhi || assessmentData.features?.mdvpFhi || 0,
+            mdvpFlo: assessmentData.voice_metrics?.mdvpFlo || assessmentData.features?.mdvpFlo || 0,
+            mdvpJitter: assessmentData.voice_metrics?.jitter || assessmentData.features?.mdvpJitter || 0,
+            mdvpShimmer: assessmentData.voice_metrics?.shimmer || assessmentData.features?.mdvpShimmer || 0,
+            nhr: assessmentData.voice_metrics?.nhr || assessmentData.features?.nhr || 0,
+            hnr: assessmentData.voice_metrics?.hnr || assessmentData.features?.hnr || 0,
+            rpde: assessmentData.voice_metrics?.rpde || assessmentData.features?.rpde || 0,
+            dfa: assessmentData.voice_metrics?.dfa || assessmentData.features?.dfa || 0,
+            spread1: assessmentData.voice_metrics?.spread1 || assessmentData.features?.spread1 || 0,
+            spread2: assessmentData.voice_metrics?.spread2 || assessmentData.features?.spread2 || 0,
+            d2: assessmentData.voice_metrics?.d2 || assessmentData.features?.d2 || 0,
+            ppe: assessmentData.voice_metrics?.ppe || assessmentData.features?.ppe || 0,
+            // Clinical symptoms (if present)
+            tremor: assessmentData.features?.tremor || 0,
+            rigidity: assessmentData.features?.rigidity || 0,
+            bradykinesia: assessmentData.features?.bradykinesia || 0,
+            posturalInstability: assessmentData.features?.posturalInstability || 0,
+            voiceChanges: assessmentData.features?.voiceChanges || 0,
+            handwriting: assessmentData.features?.handwriting || 0
+          };
+        } else if (assessmentData.features) {
+          // Use existing features structure
+          features = assessmentData.features;
+        } else {
+          // Fallback to empty features
+          features = {
+            mdvpFo: 0, mdvpFhi: 0, mdvpFlo: 0, mdvpJitter: 0, mdvpShimmer: 0,
+            nhr: 0, hnr: 0, rpde: 0, dfa: 0, spread1: 0, spread2: 0, d2: 0, ppe: 0,
+            tremor: 0, rigidity: 0, bradykinesia: 0, posturalInstability: 0, voiceChanges: 0, handwriting: 0
+          };
+        }
+        
+        return {
+          id,
+          date: new Date(assessmentData.timestamp),
+          features,
+          result: {
+            riskScore: assessmentData.prediction?.severity || 0,
+            probability: assessmentData.prediction?.probability || 0,
+            status: assessmentData.prediction?.status || 0,
+            modelUsed: assessmentData.model_used || Object.keys(assessmentData.prediction?.model_predictions || {})[0] || "clinical_assessment"
+          },
+          voiceRecorded: hasVoiceMetrics,
+          allModelResults: Object.entries(assessmentData.prediction?.model_predictions || {}).map(
+            ([modelName, score]: [string, number]) => ({
+              modelName,
+              riskScore: score,
+              probability: assessmentData.prediction?.model_probabilities?.[modelName] || 0,
+              confidence: assessmentData.prediction?.model_probabilities?.[modelName] || 0
+            })
+          )
+        };
+      });
       
       console.log('Processed Firebase data:', processedData);
       return processedData;

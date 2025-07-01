@@ -76,7 +76,7 @@ export function useMultiModelPrediction() {
                 modelResults[modelName] = {
                   prediction: modelResult.prediction || 0,
                   probability: modelResult.probability || 0,
-                  confidence: modelResult.confidence || 0,
+                  confidence: modelResult.probability || 0, // Use probability as confidence
                   feature_importance: modelResult.feature_importance || {}
                 };
                 totalModels++;

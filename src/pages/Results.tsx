@@ -148,29 +148,33 @@ const Results = () => {
           
           // Save clinical assessment to Firebase
           if (state.formData) {
+            // Check if voice features were provided with the clinical assessment
+            const hasVoiceFeatures = state.voiceFeatures && state.hasVoiceData;
+            
             const features = {
-              mdvpFo: 0, // Clinical assessments don't have voice features
-              mdvpFhi: 0,
-              mdvpFlo: 0,
-              mdvpJitter: 0,
-              mdvpJitterAbs: 0,
-              mdvpRap: 0,
-              mdvpPpq: 0,
-              jitterDdp: 0,
-              mdvpShimmer: 0,
-              mdvpShimmerDb: 0,
-              shimmerApq3: 0,
-              shimmerApq5: 0,
-              mdvpApu: 0,
-              shimmerDda: 0,
-              nhr: 0,
-              hnr: 0,
-              rpde: 0,
-              dfa: 0,
-              spread1: 0,
-              spread2: 0,
-              d2: 0,
-              ppe: 0,
+              // Use voice features if available, otherwise default to 0
+              mdvpFo: hasVoiceFeatures ? (state.voiceFeatures?.mdvpFo || 0) : 0,
+              mdvpFhi: hasVoiceFeatures ? (state.voiceFeatures?.mdvpFhi || 0) : 0,
+              mdvpFlo: hasVoiceFeatures ? (state.voiceFeatures?.mdvpFlo || 0) : 0,
+              mdvpJitter: hasVoiceFeatures ? (state.voiceFeatures?.mdvpJitter || 0) : 0,
+              mdvpJitterAbs: hasVoiceFeatures ? (state.voiceFeatures?.mdvpJitterAbs || 0) : 0,
+              mdvpRap: hasVoiceFeatures ? (state.voiceFeatures?.mdvpRap || 0) : 0,
+              mdvpPpq: hasVoiceFeatures ? (state.voiceFeatures?.mdvpPpq || 0) : 0,
+              jitterDdp: hasVoiceFeatures ? (state.voiceFeatures?.jitterDdp || 0) : 0,
+              mdvpShimmer: hasVoiceFeatures ? (state.voiceFeatures?.mdvpShimmer || 0) : 0,
+              mdvpShimmerDb: hasVoiceFeatures ? (state.voiceFeatures?.mdvpShimmerDb || 0) : 0,
+              shimmerApq3: hasVoiceFeatures ? (state.voiceFeatures?.shimmerApq3 || 0) : 0,
+              shimmerApq5: hasVoiceFeatures ? (state.voiceFeatures?.shimmerApq5 || 0) : 0,
+              mdvpApu: hasVoiceFeatures ? (state.voiceFeatures?.mdvpApu || 0) : 0,
+              shimmerDda: hasVoiceFeatures ? (state.voiceFeatures?.shimmerDda || 0) : 0,
+              nhr: hasVoiceFeatures ? (state.voiceFeatures?.nhr || 0) : 0,
+              hnr: hasVoiceFeatures ? (state.voiceFeatures?.hnr || 0) : 0,
+              rpde: hasVoiceFeatures ? (state.voiceFeatures?.rpde || 0) : 0,
+              dfa: hasVoiceFeatures ? (state.voiceFeatures?.dfa || 0) : 0,
+              spread1: hasVoiceFeatures ? (state.voiceFeatures?.spread1 || 0) : 0,
+              spread2: hasVoiceFeatures ? (state.voiceFeatures?.spread2 || 0) : 0,
+              d2: hasVoiceFeatures ? (state.voiceFeatures?.d2 || 0) : 0,
+              ppe: hasVoiceFeatures ? (state.voiceFeatures?.ppe || 0) : 0,
               // Add clinical symptoms as features
               tremor: state.formData.tremor ? 1 : 0,
               rigidity: state.formData.rigidity ? 1 : 0,
@@ -180,15 +184,21 @@ const Results = () => {
               handwriting: state.formData.handwriting ? 1 : 0
             };
             
+            console.log("Results.tsx - Clinical assessment features:", features);
+            console.log("Results.tsx - Has voice features:", hasVoiceFeatures);
+            
+            // Use a more descriptive model name based on whether voice data was included
+            const modelName = hasVoiceFeatures ? 'clinical_with_voice' : 'clinical_assessment';
+            
             const saveResult = {
               riskScore: isNaN(risk_score) ? 0 : risk_score,
               probability: isNaN(probability) ? 0 : probability,
               status: isNaN(prediction) ? 0 : prediction,
-              modelUsed: 'clinical_assessment'
+              modelUsed: modelName
             };
             
             const allModelResultsForSave = [{
-              modelName: 'clinical_assessment',
+              modelName: modelName,
               riskScore: isNaN(risk_score) ? 0 : risk_score,
               probability: isNaN(probability) ? 0 : probability,
               confidence: isNaN(probability) ? 0 : probability

@@ -149,7 +149,8 @@ models = {
     'neural_network': None,
     'extra_trees': None,
     'ensemble': None,
-    'adaboost': None
+    'adaboost': None,
+    'gradient_boosting': None
 }
 scaler = None
 feature_names = None
@@ -192,7 +193,8 @@ def initialize_models():
         'neural_network': 'neural_network_fixed.joblib',
         'extra_trees': 'extra_trees_fixed.joblib',
         'ensemble': 'ensemble_fixed.joblib',
-        'adaboost': 'adaboost_fixed.joblib'
+        'adaboost': 'adaboost_fixed.joblib',
+        'gradient_boosting': 'gradient_boosting_fixed.joblib'
     }
     
     for model_name, filename in model_files.items():

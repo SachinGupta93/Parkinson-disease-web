@@ -163,24 +163,10 @@ def extract_voice_features_safely(audio_data, sample_rate):
                 autocorr = np.correlate(audio_data, audio_data, mode='full')
                 autocorr = autocorr[autocorr.size // 2:]
                 if len(autocorr) > 100:
-                    # Ensure positive values and normalize
-                    autocorr_positive = np.abs(autocorr[:100])
-                    autocorr_normalized = autocorr_positive / (np.max(autocorr_positive) + 1e-10)
-                    
-                    # Add small epsilon to avoid log(0) and ensure all values are positive
-                    autocorr_safe = autocorr_normalized + 1e-8
-                    
                     # Find the decay rate
-                    log_autocorr = np.log(autocorr_safe)
-                    decay_rate = np.mean(np.diff(log_autocorr))
-                    
-                    # Check for valid decay rate
-                    if np.isfinite(decay_rate):
-                        d2_value = -decay_rate * 100
-                        features['d2'] = float(min(max(d2_value, 2.0), 3.0))
-                        logger.info(f"D2-like feature extracted: {features['d2']:.2f}")
-                    else:
-                        logger.warning("D2 calculation resulted in non-finite value. Using default.")
+                    decay_rate = np.mean(np.diff(np.log(autocorr[:100] + 1e-10)))
+                    features['d2'] = float(min(max(-decay_rate * 100, 2.0), 3.0))
+                    logger.info(f"D2-like feature extracted: {features['d2']:.2f}")
             except Exception as e:
                 logger.warning(f"Error extracting D2 feature: {e}. Using default value.")
         

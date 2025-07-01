@@ -17,6 +17,7 @@ import { CustomProgress } from '../ui/custom-progress';
 import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
 import { Badge } from '../ui/badge';
 import { Separator } from '../ui/separator';
+import AnalysisMethodGuide from '../AnalysisMethodGuide';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, 
   ResponsiveContainer, BarChart, Bar, Cell, PieChart, Pie, Sector, 
@@ -52,10 +53,10 @@ import {
   AlertCircle,
   ArrowRight,
   Clock,
+  History,
   Calendar,
   PieChart as PieChartIcon,
   BarChart3,
-  History,
   Sparkles,
   Zap,
   Lightbulb,
@@ -137,7 +138,7 @@ const EnhancedDashboard: React.FC = () => {
           timestamp: assessment.date instanceof Date ? assessment.date.toISOString() : new Date().toISOString(),
           prediction: {
             status: assessment.result.status === 1,
-            confidence: assessment.result.probability,
+            probability: assessment.result.probability,
             severity: assessment.result.riskScore,
             model_predictions: assessment.allModelResults?.reduce((acc, model) => {
               acc[model.modelName] = model.riskScore;
@@ -168,7 +169,7 @@ const EnhancedDashboard: React.FC = () => {
           const modelPreds = assessments[0].allModelResults.map(model => ({
             model: model.modelName,
             prediction: model.riskScore,
-            confidence: model.confidence || 0
+            confidence: model.probability || 0
           }));
           setModelPredictions(modelPreds);
         }
@@ -190,7 +191,7 @@ const EnhancedDashboard: React.FC = () => {
             timestamp: item.timestamp instanceof Date ? item.timestamp.toISOString() : new Date().toISOString(),
             prediction: {
               status: analysisResults.severity > 50, 
-              confidence: analysisResults.confidence,
+              probability: analysisResults.confidence || analysisResults.probability,
               severity: analysisResults.severity,
               model_predictions: analysisResults.model_predictions || {}, 
               model_probabilities: analysisResults.model_probabilities || {} 
@@ -441,7 +442,7 @@ const EnhancedDashboard: React.FC = () => {
       
       // Get values from the data structure
       const severity = getSafeNumber(prediction.severity);
-      const confidence = getSafeNumber(prediction.confidence) * 100;
+      const confidence = getSafeNumber(prediction.probability) * 100;
       const pitch = getSafeNumber(voice_metrics.pitch);
       const jitter = getSafeNumber(voice_metrics.jitter) * 100; // Convert to percentage
       const shimmer = getSafeNumber(voice_metrics.shimmer) * 100; // Convert to percentage
@@ -507,7 +508,7 @@ const EnhancedDashboard: React.FC = () => {
 
   const kpiData = {
     latestSeverity: latestAnalysis ? latestAnalysis.prediction.severity : null,
-    latestConfidence: latestAnalysis ? latestAnalysis.prediction.confidence * 100 : null,
+    latestConfidence: latestAnalysis ? latestAnalysis.prediction.probability * 100 : null,
     parkinsonsDetected: latestAnalysis ? (latestAnalysis.prediction.severity > 50 ? "Positive" : "Negative") : null,
     analysesCount: voiceHistory.length,
     lastUpdated: latestAnalysis ? format(new Date(latestAnalysis.timestamp), 'PPpp') : 'N/A',
@@ -735,6 +736,13 @@ const EnhancedDashboard: React.FC = () => {
           </Button>
         </div>
       </header>
+
+      {/* Analysis Method Guide - Show if user has no assessments or limited data */}
+      {(!assessments || assessments.length < 3) && (
+        <section className="mb-8">
+          <AnalysisMethodGuide />
+        </section>
+      )}
 
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         <Card className="overflow-hidden border-l-4 border-l-red-500 shadow-lg hover:shadow-xl transition-all bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm">
@@ -1474,7 +1482,7 @@ const EnhancedDashboard: React.FC = () => {
                           <div className="flex items-center">
                             <BadgePercent className="h-3 w-3 text-blue-500 mr-1" />
                             <p className="text-xs text-slate-600 dark:text-slate-400">
-                              Confidence: <span className="font-medium">{(analysis.prediction.confidence * 100).toFixed(1)}%</span>
+                              Confidence: <span className="font-medium">{(analysis.prediction.probability * 100).toFixed(1)}%</span>
                             </p>
                           </div>
                         </div>
