@@ -24,7 +24,7 @@ def verify_data():
         print(f"   - Parkinson's (1): {(df['status'] == 1).sum()}")
         
         # Show first few rows
-        print("\n📄 First 3 rows:")
+        print("\n📄 First 5 rows:")
         print(df.head(5))
         
         # Check for missing values

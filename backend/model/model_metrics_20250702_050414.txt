@@ -1,0 +1,58 @@
+Parkinson's Disease Prediction Model Training Report
+============================================================
+Training Date: 2025-07-02 05:04:14
+Dataset: parkinsons.data
+Total Features: 22
+Training Samples: 156
+Test Samples: 39
+
+Model Performance Results:
+----------------------------------------
+
+RANDOM_FOREST:
+  Accuracy: 0.9231
+  Precision: 0.9333
+  Recall: 0.9655
+  F1-Score: 0.9492
+  AUC: 0.9621
+  CV Mean: 0.8849 ± 0.0315
+
+SVM:
+  Accuracy: 0.9231
+  Precision: 0.9062
+  Recall: 1.0000
+  F1-Score: 0.9508
+  AUC: 0.9552
+  CV Mean: 0.8718 ± 0.0205
+
+NEURAL_NETWORK:
+  Accuracy: 0.9487
+  Precision: 0.9655
+  Recall: 0.9655
+  F1-Score: 0.9655
+  AUC: 0.9897
+  CV Mean: 0.9296 ± 0.0235
+
+EXTRA_TREES:
+  Accuracy: 0.9231
+  Precision: 0.9333
+  Recall: 0.9655
+  F1-Score: 0.9492
+  AUC: 0.9793
+  CV Mean: 0.9036 ± 0.0293
+
+ADABOOST:
+  Accuracy: 0.8462
+  Precision: 0.8966
+  Recall: 0.8966
+  F1-Score: 0.8966
+  AUC: 0.9103
+  CV Mean: 0.9165 ± 0.0261
+
+GRADIENT_BOOSTING:
+  Accuracy: 0.9231
+  Precision: 0.9643
+  Recall: 0.9310
+  F1-Score: 0.9474
+  AUC: 0.9759
+  CV Mean: 0.9171 ± 0.0420
